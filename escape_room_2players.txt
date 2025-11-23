@@ -1,0 +1,75 @@
+======================================================================
+PETRI NET ANALYSIS REPORT
+======================================================================
+PNML file : escape_room_2players.pnml
+
+Task 1 – Net summary
+----------------------------------------------------------------------
+  Number of places      : 17
+  Number of transitions : 15
+  Initial marking M0    : (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0)
+
+  Places (index : id / name)
+     0: P1_idle / P1_idle
+     1: P1_F / P1_F
+     2: P1_C / P1_C
+     3: P1_ready / P1_ready
+     4: P1_working / P1_working
+     5: P2_idle / P2_idle
+     6: P2_F / P2_F
+     7: P2_C / P2_C
+     8: P2_ready / P2_ready
+     9: P2_working / P2_working
+    10: F_free / F_free
+    11: C_free / C_free
+    12: A_unsolved / A_unsolved
+    13: A_solved / A_solved
+    14: B_unsolved / B_unsolved
+    15: B_solved / B_solved
+    16: Done / Done
+
+Task 2 – Explicit reachability (BFS)
+----------------------------------------------------------------------
+  |R| (reachable markings) : 53
+  BFS exploration time      : 0.000346 seconds
+
+  Sample reachable markings (up to 10):
+    M0: (0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_ready, P2_idle, A_unsolved, B_unsolved
+    M1: (0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_C, P2_F, A_unsolved, B_unsolved
+    M2: (0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_F, P2_C, A_unsolved, B_unsolved
+    M3: (1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_idle, P2_ready, A_unsolved, B_unsolved
+    M4: (0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_C, P2_idle, F_free, A_unsolved, B_unsolved
+    M5: (1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_idle, P2_C, F_free, A_unsolved, B_unsolved
+    M6: (0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0)  |  tokens at: P1_F, P2_idle, C_free, A_unsolved, B_unsolved
+    M7: (1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0)  |  tokens at: P1_idle, P2_F, C_free, A_unsolved, B_unsolved
+    M8: (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0)  |  tokens at: P1_idle, P2_idle, F_free, C_free, A_unsolved, B_unsolved
+    M9: (0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0)  |  tokens at: P1_ready, P2_idle, A_solved, B_unsolved
+    ... (43 more markings not shown)
+
+Task 3 – BDD-based symbolic reachability
+----------------------------------------------------------------------
+  |R| (reachable markings) : 53
+  BDD fixpoint time        : 4.838852 seconds
+
+  Sanity check:
+    - Initial marking M0 is in reachable set: True
+
+Task 4 – Deadlock detection (ILP + BDD)
+----------------------------------------------------------------------
+  Result : Reachable deadlock marking found
+           (no transition is enabled at this marking).
+
+  m_deadlock =
+    (0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1)  |  tokens at: P1_F, P2_C, Done
+
+Task 5 – Optimization over reachable markings (ILP + BDD)
+----------------------------------------------------------------------
+  Weights (c_p for each place index p):
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+  Optimization sense        : max
+
+  Result : Optimal reachable marking found.
+           Objective value = 1.0
+
+  m_opt =
+    (1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)  |  tokens at: P1_idle, P2_working, Done

@@ -1,15 +1,10 @@
-#!/usr/bin/env python3
 """
-petri_analyzer.py
-
 Implements:
   - PNML parsing for 1-safe P/T nets (Task 1)
   - Explicit (BFS) reachability (Task 2)
   - BDD-based symbolic reachability using dd.autoref.BDD (Task 3)
   - ILP + BDD deadlock detection using PuLP (Task 4)
   - Linear optimization over reachable markings (Task 5, ILP + BDD filter)
-
-This is educational reference code for your assignment.
 """
 
 from __future__ import annotations

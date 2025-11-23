@@ -23,9 +23,27 @@ Install dependencies (recommended):
 pip install dd pulp
 # or
 python -m pip install dd pulp
+```
 
-##How to run
-From the folder containing `main.py` and your PNML model:
+## 2. How to Choose weights vector
 
-```bash
+- If you do not specify --weights, the program uses weight equal 1 for all places by default.
+- For running with a custom weight vector, remember to maximize reaching the global success marking (i.e.,place Done) and optionally reward having puzzles solved. 
+- Suggest wieght vector for escape_room_2players.pnml: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1
+- Note that this suggested weight vector is chosen because the Petri net is fairly complex, which can otherwise cause the execution to freeze if we use a random or default weight vector.
+
+
+## 3. How to run
+
+From the folder containing `main.py` and your PNML model, run the command with format as below:
+
 python main.py <model.pnml> [--weights w0 w1 ... w_{n-1}] [--sense max|min]
+
+-In detail command for 3 pnml files:
+```bash
+python main.py simple.pnml
+
+python main.py fork_join_deadlock.pnml  
+
+python main.py escape_room_2players.pnml --weights 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 --sense max
+```
