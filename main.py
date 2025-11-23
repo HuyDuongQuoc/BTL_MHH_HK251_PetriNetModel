@@ -2,35 +2,33 @@
 """
 petri_analyzer.py
 
-Toy implementation for:
+Implements:
   - PNML parsing for 1-safe P/T nets (Task 1)
   - Explicit (BFS) reachability (Task 2)
-  - BDD-based symbolic reachability (Task 3)
-  - ILP + BDD-based deadlock detection (Task 4)
-  - Linear optimization over reachable markings (Task 5)
+  - BDD-based symbolic reachability using dd.autoref.BDD (Task 3)
+  - ILP + BDD deadlock detection using PuLP (Task 4)
+  - Linear optimization over reachable markings (Task 5, ILP + BDD filter)
 
-This is *educational* reference code. Please read and adapt it to match
-your own design and coding style instead of submitting verbatim.
+This is educational reference code for your assignment.
 """
 
 from __future__ import annotations
 
 import time
+import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Iterable, Optional
 
 import xml.etree.ElementTree as ET
 
-# Optional dependencies: we only import them when actually used.
+# Optional dependencies
 try:
-    # Binary Decision Diagrams (pure Python implementation)
     # pip install dd
     from dd.autoref import BDD  # type: ignore
 except ImportError:  # pragma: no cover
     BDD = None  # type: ignore
 
 try:
-    # Integer Linear Programming
     # pip install pulp
     import pulp  # type: ignore
 except ImportError:  # pragma: no cover
@@ -38,12 +36,10 @@ except ImportError:  # pragma: no cover
 
 
 # ---------- Basic Petri net data structures ----------
-
-
 @dataclass
 class Place:
     pid: str          # PNML id
-    name: str         # human-readable name (if present)
+    name: str         # human-readable name
     index: int        # index in places list (0..n-1)
 
 
@@ -112,16 +108,13 @@ class PetriNet:
                 return False
 
         # For 1-safe nets, do not allow putting a second token in a place.
-        # So all "pure" post places must currently be empty.
         for p in t.post:
             if p not in t.pre and ((marking_bits >> p) & 1) == 1:
                 return False
         return True
 
     def fire_bits(self, marking_bits: int, t: Transition) -> int:
-        """
-        Fire t from marking_bits and return successor marking_bits.
-        """
+        """Fire t from marking_bits and return successor marking_bits."""
         new_bits = marking_bits
         # consume tokens from pre \ post
         for p in t.pre:
@@ -131,13 +124,11 @@ class PetriNet:
         for p in t.post:
             if p not in t.pre:
                 new_bits |= (1 << p)
-        # places in pre ∩ post keep their tokens
+        # pre ∩ post keep their tokens
         return new_bits
 
 
 # ---------- PNML parsing (Task 1) ----------
-
-# PNML uses XML with namespaces; we ignore the namespace by stripping it. :contentReference[oaicite:2]{index=2}
 
 def _local_tag(tag: str) -> str:
     """Strip XML namespace from a tag name if present."""
@@ -157,18 +148,10 @@ def _find_child(elem: ET.Element, local_name: str) -> Optional[ET.Element]:
 def parse_pnml(filename: str) -> PetriNet:
     """
     Parse a 1-safe P/T net from a PNML file.
-
-    This parser is intentionally simple and only supports:
-
-      - <place id=...> elements with optional
-            <name><text>..</text></name> label
-        and optional
-            <initialMarking><text>n</text></initialMarking> label
-
+    Supports:
+      - <place id=...> with <name><text>..</text></name> and optional <initialMarking>
       - <transition id=...> with optional <name><text>..</text></name>
-
       - <arc id=... source=... target=...> between places and transitions
-        (other arc types/inhibitor arcs are ignored)
     """
     tree = ET.parse(filename)
     root = tree.getroot()
@@ -280,7 +263,6 @@ def parse_pnml(filename: str) -> PetriNet:
 
 # ---------- Explicit reachability (Task 2) ----------
 
-
 def explicit_reachability(net: PetriNet) -> Tuple[Set[int], Dict[int, List[Tuple[int, int]]]]:
     """
     Compute reachability graph using plain BFS.
@@ -293,9 +275,10 @@ def explicit_reachability(net: PetriNet) -> Tuple[Set[int], Dict[int, List[Tuple
     visited: Set[int] = {start}
     edges: Dict[int, List[Tuple[int, int]]] = {}
 
-    queue: List[int] = [start]
+    from collections import deque
+    queue: deque[int] = deque([start])
     while queue:
-        m = queue.pop(0)
+        m = queue.popleft()
         outgoing: List[Tuple[int, int]] = []
         for ti, t in enumerate(net.transitions):
             if net.is_enabled_bits(m, t):
@@ -310,7 +293,6 @@ def explicit_reachability(net: PetriNet) -> Tuple[Set[int], Dict[int, List[Tuple
 
 # ---------- BDD-based symbolic reachability (Task 3) ----------
 
-
 @dataclass
 class BDDReachabilityResult:
     bdd: "BDD"
@@ -323,20 +305,19 @@ def build_symbolic_transition_relation(
     net: PetriNet,
     bdd: "BDD",
     x_vars: List[str],
-    xp_vars: List[str])->"BDD.Function":  # type: ignore
+    xp_vars: List[str],
+) -> "BDD.Function":  # type: ignore
     """
     Build the transition relation T(x, x') as a BDD.
 
     For each transition t, and for each place i, we add local constraints:
 
-        if i in pre , post:     x_i & ~x'_i
-        if i in post , pre:     ~x_i & x'_i
-        if i in pre ∩ post:     x_i &  x'_i
-        if i not in pre U post: (x_i &  x'_i) | (~x_i & ~x'_i)
+        if i in pre \\ post:     x_i & ~x'_i
+        if i in post \\ pre:     ~x_i & x'_i
+        if i in pre ∩ post:      x_i &  x'_i
+        if i not in pre ∪ post:  (x_i &  x'_i) | (~x_i & ~x'_i)
 
     The overall relation is the disjunction over all transitions.
-
-    BDD operations and quantification follow the dd.autoref API. :contentReference[oaicite:3]{index=3}
     """
     n = net.num_places
     assert len(x_vars) == len(xp_vars) == n
@@ -426,48 +407,46 @@ def symbolic_reachability(net: PetriNet) -> BDDReachabilityResult:
 def bdd_marking_membership(res: BDDReachabilityResult, marking_bits: int) -> bool:
     """Check if a marking (bit-encoded) is in the reachable set BDD."""
     bdd = res.bdd
-    n = len(res.x_vars)
     assignment = {}
-    for i in range(n):
-        vname = res.x_vars[i]
+    for i, vname in enumerate(res.x_vars):
         assignment[vname] = bool((marking_bits >> i) & 1)
     cube = bdd.cube(assignment)
     return (cube & res.reachable) != bdd.false
 
 
 def count_reachable_markings(res: BDDReachabilityResult) -> int:
-    """
-    Return the number of satisfying assignments of the reachable-set BDD.
-
-    Uses bdd.count(u, nvars) from dd.autoref. :contentReference[oaicite:4]{index=4}
-    """
+    """Return the number of satisfying assignments of the reachable-set BDD."""
     n = len(res.x_vars)
     return int(res.bdd.count(res.reachable, nvars=n))
 
 
-# ---------- ILP + BDD: deadlock detection (Task 4) ----------
+def format_marking_with_places(net: PetriNet, marking: Tuple[int, ...]) -> str:
+    """
+    Return a human-readable description of a marking:
+      - 0/1 vector
+      - list of places that contain tokens
+    """
+    assert len(marking) == net.num_places
+    active_indices = [i for i, v in enumerate(marking) if v]
+    if active_indices:
+        place_list = ", ".join(f"{net.places[i].name}" for i in active_indices)
+    else:
+        place_list = "∅ (no tokens)"
+    return f"{marking}  |  tokens at: {place_list}"
 
+
+# ---------- ILP + BDD: deadlock detection (Task 4) ----------
 
 def find_deadlock_ilp_bdd(net: PetriNet, bdd_res: BDDReachabilityResult) -> Optional[Tuple[int, ...]]:
     """
     Find a reachable deadlock marking using ILP + BDD filtering.
 
-    ILP model (over binary variables m_p ∈ {0,1} for each place p):
+    ILP model (binary variables m_p ∈ {0,1} for each place p):
 
         For each transition t with preset P_t:
-            sum_{p ∈ P_t} m_p <= |P_t| - 1
+            sum_{p ∈ P_t} m_p <= |P_t| - 1   (no transition fully enabled)
 
-    This encodes that every transition has at least one empty input place,
-    i.e. no transition is enabled.
-
-    Because this does not enforce reachability, we use the BDD to filter the
-    ILP solutions. If the current ILP solution is unreachable, we add a
-    blocking constraint and resolve, until either:
-
-      - we find a reachable deadlock, or
-      - the ILP becomes infeasible.
-
-    PuLP is used for ILP modeling and solving. :contentReference[oaicite:5]{index=5}
+    We then use the BDD to keep only reachable solutions.
     """
     if pulp is None:
         raise RuntimeError("PuLP is not available. Install package 'pulp' first.")
@@ -485,7 +464,6 @@ def find_deadlock_ilp_bdd(net: PetriNet, bdd_res: BDDReachabilityResult) -> Opti
     for t in net.transitions:
         if not t.pre:
             # transitions without preset would always be enabled;
-            # you can add a custom constraint for them if needed.
             continue
         prob += pulp.lpSum(m_vars[i] for i in t.pre) <= len(t.pre) - 1
 
@@ -520,7 +498,6 @@ def find_deadlock_ilp_bdd(net: PetriNet, bdd_res: BDDReachabilityResult) -> Opti
 
 # ---------- ILP + BDD: optimization over reachable markings (Task 5) ----------
 
-
 def optimize_over_reachable(
     net: PetriNet,
     bdd_res: BDDReachabilityResult,
@@ -535,15 +512,6 @@ def optimize_over_reachable(
         bdd_res: reachable-set BDD info from symbolic_reachability.
         weights: list of coefficients c_p (same length as number of places).
         sense: 'max' or 'min'.
-
-    Returns:
-        (best_marking, objective_value) or None if no feasible solution.
-
-    Strategy:
-        - Build ILP with objective c^T m and only 0/1 bounds on m.
-        - Solve, then check reachability using BDD.
-        - If unreachable, add a blocking constraint and resolve, until
-          either we find a reachable optimum or the ILP becomes infeasible.
     """
     if pulp is None:
         raise RuntimeError("PuLP is not available. Install package 'pulp' first.")
@@ -605,85 +573,188 @@ def optimize_over_reachable(
     return best_marking, best_val
 
 
-# ---------- Simple CLI for experimentation ----------
-
-
-def _summary(net: PetriNet) -> None:
-    print("Petri net summary:")
-    print(f"  Places      : {net.num_places}")
-    print(f"  Transitions : {net.num_transitions}")
-    print("  Initial     :", net.initial)
-
+# ---------- CLI: run ALL tasks and write single report ----------
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Petri net analyzer: PNML parsing, explicit & BDD reachability, ILP+BDD deadlocks/optimization.",
+        description="Petri net analyzer: runs Tasks 1–5 and writes a report.",
     )
     parser.add_argument("pnml", help="Input PNML file")
-    parser.add_argument(
-        "--mode",
-        choices=["explicit", "bdd", "deadlock", "opt"],
-        default="explicit",
-        help="Which analysis to run",
-    )
     parser.add_argument(
         "--weights",
         type=float,
         nargs="*",
-        help="Weights for optimization over reachable markings (Task 5)",
+        help="Weights for optimization over reachable markings (Task 5). "
+             "If omitted, defaults to 1 for every place.",
     )
     parser.add_argument(
         "--sense",
         choices=["max", "min"],
         default="max",
-        help="Optimization sense for Task 5",
+        help="Optimization sense for Task 5 (default: max)",
     )
     args = parser.parse_args()
 
-    net = parse_pnml(args.pnml)
-    _summary(net)
+    # Prepare report file
+    base_name = os.path.splitext(os.path.basename(args.pnml))[0]
+    report_path = base_name + ".txt"
 
-    if args.mode == "explicit":
-        t0 = time.time()
-        visited, edges = explicit_reachability(net)
-        t1 = time.time()
-        print(f"Explicit reachability: |R| = {len(visited)} markings")
-        print(f"  BFS time: {t1 - t0:.3f} s")
+    output_lines: List[str] = []
+
+    def out(line: str = "") -> None:
+        """Print to terminal AND append to the report buffer."""
+        print(line)
+        output_lines.append(line)
+
+    # ---------------- Task 1 – Net summary ----------------
+    out("=" * 70)
+    out("PETRI NET ANALYSIS REPORT")
+    out("=" * 70)
+    out(f"PNML file : {args.pnml}")
+    out("")
+
+    out("Task 1 – Net summary")
+    out("-" * 70)
+
+    try:
+        net = parse_pnml(args.pnml)
+    except Exception as e:
+        out(f"[ERROR] Failed to parse PNML file: {e}")
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(output_lines))
+        out(f"\n[INFO] Report written to {report_path}")
+        return
+
+    out(f"  Number of places      : {net.num_places}")
+    out(f"  Number of transitions : {net.num_transitions}")
+    out(f"  Initial marking M0    : {net.initial}")
+    out("")
+    out("  Places (index : id / name)")
+    for p in net.places:
+        out(f"    {p.index:2d}: {p.pid} / {p.name}")
+    out("")
+
+    # ---------------- Task 2 – Explicit reachability ----------------
+    out("Task 2 – Explicit reachability (BFS)")
+    out("-" * 70)
+    t0 = time.time()
+    visited, edges = explicit_reachability(net)
+    t1 = time.time()
+    out(f"  |R| (reachable markings) : {len(visited)}")
+    out(f"  BFS exploration time      : {t1 - t0:.6f} seconds")
+    out("")
+    out("  Sample reachable markings (up to 10):")
+    sorted_markings = sorted(visited)
+    max_show = min(10, len(sorted_markings))
+    for idx in range(max_show):
+        bits = sorted_markings[idx]
+        m = net.bits_to_marking(bits)
+        out(f"    M{idx}: {format_marking_with_places(net, m)}")
+    if len(sorted_markings) > max_show:
+        out(f"    ... ({len(sorted_markings) - max_show} more markings not shown)")
+    out("")
+
+    # ---------------- Task 3 – BDD reachability ----------------
+    out("Task 3 – BDD-based symbolic reachability")
+    out("-" * 70)
+    bdd_res: Optional[BDDReachabilityResult] = None
+    if BDD is None:
+        out("[ERROR] Package 'dd' is not available. Install it with 'pip install dd'.")
+        out("        Tasks 3–5 (BDD, ILP+BDD) cannot be executed.")
     else:
-        # compute BDD reachability first
-        t0 = time.time()
-        bdd_res = symbolic_reachability(net)
-        t1 = time.time()
-        num = count_reachable_markings(bdd_res)
-        print(f"BDD reachability: |R| = {num} markings")
-        print(f"  Symbolic fixpoint time: {t1 - t0:.3f} s")
+        try:
+            t0 = time.time()
+            bdd_res = symbolic_reachability(net)
+            t1 = time.time()
+            num = count_reachable_markings(bdd_res)
+            out(f"  |R| (reachable markings) : {num}")
+            out(f"  BDD fixpoint time        : {t1 - t0:.6f} seconds")
+            out("")
+            out("  Sanity check:")
+            m0_bits = net.initial_bits()
+            in_R0 = bdd_marking_membership(bdd_res, m0_bits)
+            out(f"    - Initial marking M0 is in reachable set: {in_R0}")
+        except RuntimeError as e:
+            out(f"[ERROR] {e}")
+            bdd_res = None
+    out("")
 
-        if args.mode == "deadlock":
-            dl = find_deadlock_ilp_bdd(net, bdd_res)
-            if dl is None:
-                print("No reachable deadlock found (within ILP search space).")
-            else:
-                print("Reachable deadlock marking:", dl)
-        elif args.mode == "opt":
+    # Only continue with Tasks 4–5 if BDD was successful
+    if bdd_res is None:
+        out("Skipping Task 4 and Task 5 because BDD reachability is unavailable.")
+    else:
+        # ---------------- Task 4 – Deadlock detection ----------------
+        out("Task 4 – Deadlock detection (ILP + BDD)")
+        out("-" * 70)
+        if pulp is None:
+            out("[ERROR] Package 'pulp' is not available. Install it with 'pip install pulp'.")
+            out("        Deadlock detection cannot be executed.")
+        else:
+            try:
+                dl = find_deadlock_ilp_bdd(net, bdd_res)
+                if dl is None:
+                    out("  Result : No reachable deadlock marking found.")
+                else:
+                    out("  Result : Reachable deadlock marking found")
+                    out("           (no transition is enabled at this marking).")
+                    out("")
+                    out("  m_deadlock =")
+                    out(f"    {format_marking_with_places(net, dl)}")
+            except RuntimeError as e:
+                out(f"[ERROR] {e}")
+        out("")
+
+        # ---------------- Task 5 – Optimization over reachable markings ----------------
+        out("Task 5 – Optimization over reachable markings (ILP + BDD)")
+        out("-" * 70)
+        if pulp is None:
+            out("[ERROR] Package 'pulp' is not available. Install it with 'pip install pulp'.")
+            out("        Optimization over reachable markings cannot be executed.")
+        else:
+            # Determine weights
             if args.weights is None:
-                # simple default: weight 1 for each place
                 weights = [1.0] * net.num_places
+                out("  Weights not provided on command line.")
+                out("  Using default weights: c_p = 1 for every place p.")
             else:
                 if len(args.weights) != net.num_places:
-                    raise SystemExit(
-                        f"Need exactly {net.num_places} weights, got {len(args.weights)}"
+                    out(
+                        f"[ERROR] Expected {net.num_places} weights, "
+                        f"but got {len(args.weights)}."
                     )
-                weights = args.weights
-            res = optimize_over_reachable(net, bdd_res, weights, sense=args.sense)
-            if res is None:
-                print("No reachable marking satisfies the optimization problem.")
-            else:
-                marking, value = res
-                print(f"Best reachable marking ({args.sense}): {marking}")
-                print(f"Objective value: {value}")
+                    weights = None
+                else:
+                    weights = args.weights
+                    out("  Weights (c_p for each place index p):")
+                    out("    " + ", ".join(f"{w:.3g}" for w in weights))
+            out(f"  Optimization sense        : {args.sense}")
+            out("")
+
+            if weights is not None:
+                try:
+                    res = optimize_over_reachable(net, bdd_res, weights, sense=args.sense)
+                    if res is None:
+                        out("  Result : No reachable marking satisfies the ILP model.")
+                    else:
+                        best_marking, obj_val = res
+                        out("  Result : Optimal reachable marking found.")
+                        out(f"           Objective value = {obj_val}")
+                        out("")
+                        out("  m_opt =")
+                        out(f"    {format_marking_with_places(net, best_marking)}")
+                except RuntimeError as e:
+                    out(f"[ERROR] {e}")
+        out("")
+
+    # Write report file
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(output_lines))
+
+    out(f"[INFO] Report written to {report_path}")
 
 
 if __name__ == "__main__":
     main()
+0

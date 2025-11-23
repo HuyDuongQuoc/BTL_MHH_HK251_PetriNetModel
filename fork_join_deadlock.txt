@@ -1,0 +1,59 @@
+======================================================================
+PETRI NET ANALYSIS REPORT
+======================================================================
+PNML file : fork_join_deadlock.pnml
+
+Task 1 – Net summary
+----------------------------------------------------------------------
+  Number of places      : 6
+  Number of transitions : 4
+  Initial marking M0    : (1, 0, 0, 0, 0, 0)
+
+  Places (index : id / name)
+     0: p0 / P0_Start
+     1: p1 / P1_Left
+     2: p2 / P2_Right
+     3: p3 / P3_LeftDone
+     4: p4 / P4_RightDone
+     5: p5 / P5_Completed
+
+Task 2 – Explicit reachability (BFS)
+----------------------------------------------------------------------
+  |R| (reachable markings) : 6
+  BFS exploration time      : 0.000072 seconds
+
+  Sample reachable markings (up to 10):
+    M0: (1, 0, 0, 0, 0, 0)  |  tokens at: P0_Start
+    M1: (0, 1, 1, 0, 0, 0)  |  tokens at: P1_Left, P2_Right
+    M2: (0, 0, 1, 1, 0, 0)  |  tokens at: P2_Right, P3_LeftDone
+    M3: (0, 1, 0, 0, 1, 0)  |  tokens at: P1_Left, P4_RightDone
+    M4: (0, 0, 0, 1, 1, 0)  |  tokens at: P3_LeftDone, P4_RightDone
+    M5: (0, 0, 0, 0, 0, 1)  |  tokens at: P5_Completed
+
+Task 3 – BDD-based symbolic reachability
+----------------------------------------------------------------------
+  |R| (reachable markings) : 6
+  BDD fixpoint time        : 0.003250 seconds
+
+  Sanity check:
+    - Initial marking M0 is in reachable set: True
+
+Task 4 – Deadlock detection (ILP + BDD)
+----------------------------------------------------------------------
+  Result : Reachable deadlock marking found
+           (no transition is enabled at this marking).
+
+  m_deadlock =
+    (0, 0, 0, 0, 0, 1)  |  tokens at: P5_Completed
+
+Task 5 – Optimization over reachable markings (ILP + BDD)
+----------------------------------------------------------------------
+  Weights not provided on command line.
+  Using default weights: c_p = 1 for every place p.
+  Optimization sense        : max
+
+  Result : Optimal reachable marking found.
+           Objective value = 2.0
+
+  m_opt =
+    (0, 0, 1, 1, 0, 0)  |  tokens at: P2_Right, P3_LeftDone

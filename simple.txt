@@ -1,0 +1,53 @@
+======================================================================
+PETRI NET ANALYSIS REPORT
+======================================================================
+PNML file : simple.pnml
+
+Task 1 – Net summary
+----------------------------------------------------------------------
+  Number of places      : 3
+  Number of transitions : 2
+  Initial marking M0    : (1, 0, 0)
+
+  Places (index : id / name)
+     0: p0 / P0
+     1: p1 / P1
+     2: p2 / P2
+
+Task 2 – Explicit reachability (BFS)
+----------------------------------------------------------------------
+  |R| (reachable markings) : 3
+  BFS exploration time      : 0.000025 seconds
+
+  Sample reachable markings (up to 10):
+    M0: (1, 0, 0)  |  tokens at: P0
+    M1: (0, 1, 0)  |  tokens at: P1
+    M2: (0, 0, 1)  |  tokens at: P2
+
+Task 3 – BDD-based symbolic reachability
+----------------------------------------------------------------------
+  |R| (reachable markings) : 3
+  BDD fixpoint time        : 0.000615 seconds
+
+  Sanity check:
+    - Initial marking M0 is in reachable set: True
+
+Task 4 – Deadlock detection (ILP + BDD)
+----------------------------------------------------------------------
+  Result : Reachable deadlock marking found
+           (no transition is enabled at this marking).
+
+  m_deadlock =
+    (0, 0, 1)  |  tokens at: P2
+
+Task 5 – Optimization over reachable markings (ILP + BDD)
+----------------------------------------------------------------------
+  Weights not provided on command line.
+  Using default weights: c_p = 1 for every place p.
+  Optimization sense        : max
+
+  Result : Optimal reachable marking found.
+           Objective value = 1.0
+
+  m_opt =
+    (0, 0, 1)  |  tokens at: P2
