@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pnml xmlns="http://www.pnml.org/version-2009/grammar/pnml">
+  <net id="net_forkjoin" type="http://www.pnml.org/version-2009/grammar/ptnet">
+    <name>
+      <text>ForkJoinDeadlock</text>
+    </name>
+
+    <page id="page1">
+
+      <!-- Places -->
+      <place id="p0">
+        <name><text>P0_Start</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+
+      <place id="p1">
+        <name><text>P1_Left</text></name>
+        <initialMarking><text>0</text></initialMarking>
+      </place>
+
+      <place id="p2">
+        <name><text>P2_Right</text></name>
+        <initialMarking><text>0</text></initialMarking>
+      </place>
+
+      <place id="p3">
+        <name><text>P3_LeftDone</text></name>
+        <initialMarking><text>0</text></initialMarking>
+      </place>
+
+      <place id="p4">
+        <name><text>P4_RightDone</text></name>
+        <initialMarking><text>0</text></initialMarking>
+      </place>
+
+      <place id="p5">
+        <name><text>P5_Completed</text></name>
+        <initialMarking><text>0</text></initialMarking>
+      </place>
+
+      <!-- Transitions -->
+      <transition id="t_start">
+        <name><text>Tstart</text></name>
+      </transition>
+
+      <transition id="t1">
+        <name><text>T1</text></name>
+      </transition>
+
+      <transition id="t2">
+        <name><text>T2</text></name>
+      </transition>
+
+      <transition id="t_join">
+        <name><text>Tjoin</text></name>
+      </transition>
+
+      <!-- Arcs: fork -->
+      <arc id="a0" source="p0" target="t_start"/>
+      <arc id="a1" source="t_start" target="p1"/>
+      <arc id="a2" source="t_start" target="p2"/>
+
+      <!-- Left branch -->
+      <arc id="a3" source="p1" target="t1"/>
+      <arc id="a4" source="t1" target="p3"/>
+
+      <!-- Right branch -->
+      <arc id="a5" source="p2" target="t2"/>
+      <arc id="a6" source="t2" target="p4"/>
+
+      <!-- Join -->
+      <arc id="a7" source="p3" target="t_join"/>
+      <arc id="a8" source="p4" target="t_join"/>
+      <arc id="a9" source="t_join" target="p5"/>
+
+    </page>
+  </net>
+</pnml>

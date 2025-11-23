@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pnml xmlns="http://www.pnml.org/version-2009/grammar/pnml">
+  <net id="escape_room_net" type="http://www.pnml.org/version-2009/grammar/ptnet">
+    <name>
+      <text>EscapeRoomTwoPlayers</text>
+    </name>
+
+    <page id="page1">
+
+      <!-- Places: Player 1 -->
+      <place id="P1_idle">
+        <name><text>P1_idle</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+      <place id="P1_F">
+        <name><text>P1_F</text></name>
+      </place>
+      <place id="P1_C">
+        <name><text>P1_C</text></name>
+      </place>
+      <place id="P1_ready">
+        <name><text>P1_ready</text></name>
+      </place>
+      <place id="P1_working">
+        <name><text>P1_working</text></name>
+      </place>
+
+      <!-- Places: Player 2 -->
+      <place id="P2_idle">
+        <name><text>P2_idle</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+      <place id="P2_F">
+        <name><text>P2_F</text></name>
+      </place>
+      <place id="P2_C">
+        <name><text>P2_C</text></name>
+      </place>
+      <place id="P2_ready">
+        <name><text>P2_ready</text></name>
+      </place>
+      <place id="P2_working">
+        <name><text>P2_working</text></name>
+      </place>
+
+      <!-- Resources -->
+      <place id="F_free">
+        <name><text>F_free</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+      <place id="C_free">
+        <name><text>C_free</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+
+      <!-- Puzzles -->
+      <place id="A_unsolved">
+        <name><text>A_unsolved</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+      <place id="A_solved">
+        <name><text>A_solved</text></name>
+      </place>
+      <place id="B_unsolved">
+        <name><text>B_unsolved</text></name>
+        <initialMarking><text>1</text></initialMarking>
+      </place>
+      <place id="B_solved">
+        <name><text>B_solved</text></name>
+      </place>
+
+      <!-- Completion -->
+      <place id="Done">
+        <name><text>Done</text></name>
+      </place>
+
+      <!-- Transitions: Player 1 acquisition -->
+      <transition id="t_P1_takeF">
+        <name><text>P1_takeF</text></name>
+      </transition>
+      <transition id="t_P1_takeC">
+        <name><text>P1_takeC</text></name>
+      </transition>
+      <transition id="t_P1_takeC_afterF">
+        <name><text>P1_takeC_afterF</text></name>
+      </transition>
+      <transition id="t_P1_takeF_afterC">
+        <name><text>P1_takeF_afterC</text></name>
+      </transition>
+
+      <!-- Transitions: Player 1 puzzles + release -->
+      <transition id="t_P1_solveA">
+        <name><text>P1_solveA</text></name>
+      </transition>
+      <transition id="t_P1_solveB">
+        <name><text>P1_solveB</text></name>
+      </transition>
+      <transition id="t_P1_release">
+        <name><text>P1_release</text></name>
+      </transition>
+
+      <!-- Transitions: Player 2 acquisition -->
+      <transition id="t_P2_takeF">
+        <name><text>P2_takeF</text></name>
+      </transition>
+      <transition id="t_P2_takeC">
+        <name><text>P2_takeC</text></name>
+      </transition>
+      <transition id="t_P2_takeC_afterF">
+        <name><text>P2_takeC_afterF</text></name>
+      </transition>
+      <transition id="t_P2_takeF_afterC">
+        <name><text>P2_takeF_afterC</text></name>
+      </transition>
+
+      <!-- Transitions: Player 2 puzzles + release -->
+      <transition id="t_P2_solveA">
+        <name><text>P2_solveA</text></name>
+      </transition>
+      <transition id="t_P2_solveB">
+        <name><text>P2_solveB</text></name>
+      </transition>
+      <transition id="t_P2_release">
+        <name><text>P2_release</text></name>
+      </transition>
+
+      <!-- Finish transition -->
+      <transition id="t_Finish">
+        <name><text>Finish</text></name>
+      </transition>
+
+      <!-- Arcs: Player 1 acquire tools -->
+      <!-- P1_takeF: pre {P1_idle, F_free}, post {P1_F} -->
+      <arc id="a1" source="P1_idle" target="t_P1_takeF"/>
+      <arc id="a2" source="F_free" target="t_P1_takeF"/>
+      <arc id="a3" source="t_P1_takeF" target="P1_F"/>
+
+      <!-- P1_takeC: pre {P1_idle, C_free}, post {P1_C} -->
+      <arc id="a4" source="P1_idle" target="t_P1_takeC"/>
+      <arc id="a5" source="C_free" target="t_P1_takeC"/>
+      <arc id="a6" source="t_P1_takeC" target="P1_C"/>
+
+      <!-- P1_takeC_afterF: pre {P1_F, C_free}, post {P1_ready} -->
+      <arc id="a7" source="P1_F" target="t_P1_takeC_afterF"/>
+      <arc id="a8" source="C_free" target="t_P1_takeC_afterF"/>
+      <arc id="a9" source="t_P1_takeC_afterF" target="P1_ready"/>
+
+      <!-- P1_takeF_afterC: pre {P1_C, F_free}, post {P1_ready} -->
+      <arc id="a10" source="P1_C" target="t_P1_takeF_afterC"/>
+      <arc id="a11" source="F_free" target="t_P1_takeF_afterC"/>
+      <arc id="a12" source="t_P1_takeF_afterC" target="P1_ready"/>
+
+      <!-- Arcs: Player 1 solve puzzles -->
+      <!-- P1_solveA: pre {P1_ready, A_unsolved}, post {P1_working, A_solved} -->
+      <arc id="a13" source="P1_ready" target="t_P1_solveA"/>
+      <arc id="a14" source="A_unsolved" target="t_P1_solveA"/>
+      <arc id="a15" source="t_P1_solveA" target="P1_working"/>
+      <arc id="a16" source="t_P1_solveA" target="A_solved"/>
+
+      <!-- P1_solveB: pre {P1_ready, B_unsolved}, post {P1_working, B_solved} -->
+      <arc id="a17" source="P1_ready" target="t_P1_solveB"/>
+      <arc id="a18" source="B_unsolved" target="t_P1_solveB"/>
+      <arc id="a19" source="t_P1_solveB" target="P1_working"/>
+      <arc id="a20" source="t_P1_solveB" target="B_solved"/>
+
+      <!-- P1_release: pre {P1_working}, post {P1_idle, F_free, C_free} -->
+      <arc id="a21" source="P1_working" target="t_P1_release"/>
+      <arc id="a22" source="t_P1_release" target="P1_idle"/>
+      <arc id="a23" source="t_P1_release" target="F_free"/>
+      <arc id="a24" source="t_P1_release" target="C_free"/>
+
+      <!-- Arcs: Player 2 acquire tools -->
+      <!-- P2_takeF: pre {P2_idle, F_free}, post {P2_F} -->
+      <arc id="a25" source="P2_idle" target="t_P2_takeF"/>
+      <arc id="a26" source="F_free" target="t_P2_takeF"/>
+      <arc id="a27" source="t_P2_takeF" target="P2_F"/>
+
+      <!-- P2_takeC: pre {P2_idle, C_free}, post {P2_C} -->
+      <arc id="a28" source="P2_idle" target="t_P2_takeC"/>
+      <arc id="a29" source="C_free" target="t_P2_takeC"/>
+      <arc id="a30" source="t_P2_takeC" target="P2_C"/>
+
+      <!-- P2_takeC_afterF: pre {P2_F, C_free}, post {P2_ready} -->
+      <arc id="a31" source="P2_F" target="t_P2_takeC_afterF"/>
+      <arc id="a32" source="C_free" target="t_P2_takeC_afterF"/>
+      <arc id="a33" source="t_P2_takeC_afterF" target="P2_ready"/>
+
+      <!-- P2_takeF_afterC: pre {P2_C, F_free}, post {P2_ready} -->
+      <arc id="a34" source="P2_C" target="t_P2_takeF_afterC"/>
+      <arc id="a35" source="F_free" target="t_P2_takeF_afterC"/>
+      <arc id="a36" source="t_P2_takeF_afterC" target="P2_ready"/>
+
+      <!-- Arcs: Player 2 solve puzzles -->
+      <!-- P2_solveA: pre {P2_ready, A_unsolved}, post {P2_working, A_solved} -->
+      <arc id="a37" source="P2_ready" target="t_P2_solveA"/>
+      <arc id="a38" source="A_unsolved" target="t_P2_solveA"/>
+      <arc id="a39" source="t_P2_solveA" target="P2_working"/>
+      <arc id="a40" source="t_P2_solveA" target="A_solved"/>
+
+      <!-- P2_solveB: pre {P2_ready, B_unsolved}, post {P2_working, B_solved} -->
+      <arc id="a41" source="P2_ready" target="t_P2_solveB"/>
+      <arc id="a42" source="B_unsolved" target="t_P2_solveB"/>
+      <arc id="a43" source="t_P2_solveB" target="P2_working"/>
+      <arc id="a44" source="t_P2_solveB" target="B_solved"/>
+
+      <!-- P2_release: pre {P2_working}, post {P2_idle, F_free, C_free} -->
+      <arc id="a45" source="P2_working" target="t_P2_release"/>
+      <arc id="a46" source="t_P2_release" target="P2_idle"/>
+      <arc id="a47" source="t_P2_release" target="F_free"/>
+      <arc id="a48" source="t_P2_release" target="C_free"/>
+
+      <!-- Finish: pre {A_solved, B_solved}, post {Done} -->
+      <arc id="a49" source="A_solved" target="t_Finish"/>
+      <arc id="a50" source="B_solved" target="t_Finish"/>
+      <arc id="a51" source="t_Finish" target="Done"/>
+
+    </page>
+  </net>
+</pnml>
