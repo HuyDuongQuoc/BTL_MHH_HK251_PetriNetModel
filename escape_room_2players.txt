@@ -31,7 +31,7 @@ Task 1 – Net summary
 Task 2 – Explicit reachability (BFS)
 ----------------------------------------------------------------------
   |R| (reachable markings) : 53
-  BFS exploration time      : 0.000346 seconds
+  BFS exploration time      : 0.000612 seconds
 
   Sample reachable markings (up to 10):
     M0: (0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0)  |  tokens at: P1_ready, P2_idle, A_unsolved, B_unsolved
@@ -49,7 +49,7 @@ Task 2 – Explicit reachability (BFS)
 Task 3 – BDD-based symbolic reachability
 ----------------------------------------------------------------------
   |R| (reachable markings) : 53
-  BDD fixpoint time        : 4.838852 seconds
+  BDD fixpoint time        : 5.904416 seconds
 
   Sanity check:
     - Initial marking M0 is in reachable set: True
