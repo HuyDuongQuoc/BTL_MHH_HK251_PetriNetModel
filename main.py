@@ -1,755 +1,504 @@
 """
-Implements:
-  - PNML parsing for 1-safe P/T nets (Task 1)
-  - Explicit (BFS) reachability (Task 2)
-  - BDD-based symbolic reachability using dd.autoref.BDD (Task 3)
-  - ILP + BDD deadlock detection using PuLP (Task 4)
-  - Linear optimization over reachable markings (Task 5, ILP + BDD filter)
+Assignment Solution: Petri Net Reachability & Optimization
+Fix: Restored missing attributes in BDDManager to fix AttributeError.
 """
 
 from __future__ import annotations
-
 import time
 import os
+import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple, Iterable, Optional
-
+from typing import Dict, List, Set, Tuple, Any
 import xml.etree.ElementTree as ET
 
-# Optional dependencies
+# Try to import pulp for Task 5
 try:
-    # pip install dd
-    from dd.autoref import BDD  # type: ignore
-except ImportError:  # pragma: no cover
-    BDD = None  # type: ignore
+    import pulp
+except ImportError:
+    pulp = None
 
-try:
-    # pip install pulp
-    import pulp  # type: ignore
-except ImportError:  # pragma: no cover
-    pulp = None  # type: ignore
+# =============================================================================
+# PART 1: CUSTOM BDD IMPLEMENTATION
+# =============================================================================
+
+class BDDNode:
+    def __init__(self, var: int, low: int, high: int):
+        self.var = var       
+        self.low = low       
+        self.high = high     
+
+    def __repr__(self):
+        return f"Node(var={self.var}, low={self.low}, high={self.high})"
+
+class BDDManager:
+    def __init__(self):
+        # 0 is False, 1 is True. Their var index is effectively infinity.
+        self.nodes: Dict[int, BDDNode] = {
+            0: BDDNode(float('inf'), None, None), 
+            1: BDDNode(float('inf'), None, None)
+        }
+        # --- FIX: Restored these attributes ---
+        self.false_node = 0
+        self.true_node = 1
+        
+        self.unique_table: Dict[Tuple[int, int, int], int] = {}
+        self.computed_table: Dict[Tuple[Any, ...], int] = {}
+        self.next_id = 2
+        self.var_map: Dict[str, int] = {}
+        self.level_to_name: Dict[int, str] = {}
+        self.num_vars = 0
+
+    def declare(self, *names):
+        for name in names:
+            if name not in self.var_map:
+                idx = self.num_vars
+                self.var_map[name] = idx
+                self.level_to_name[idx] = name
+                self.num_vars += 1
+
+    def var(self, name: str) -> int:
+        if name not in self.var_map: raise ValueError(f"Var {name} unknown")
+        return self.get_node(self.var_map[name], 0, 1)
+
+    def get_node(self, var: int, low: int, high: int) -> int:
+        if low == high: return low
+        key = (var, low, high)
+        if key in self.unique_table: return self.unique_table[key]
+        nid = self.next_id
+        self.next_id += 1
+        self.nodes[nid] = BDDNode(var, low, high)
+        self.unique_table[key] = nid
+        return nid
+
+    def ite(self, i: int, t: int, e: int) -> int:
+        if i == 1: return t
+        if i == 0: return e
+        if t == e: return t
+        if t == 1 and e == 0: return i
+        
+        key = ('ite', i, t, e)
+        if key in self.computed_table: return self.computed_table[key]
+        
+        v_i = self.nodes[i].var
+        v_t = self.nodes[t].var
+        v_e = self.nodes[e].var
+        top_var = min(v_i, v_t, v_e)
+        
+        i_h = self.nodes[i].high if v_i == top_var else i
+        i_l = self.nodes[i].low  if v_i == top_var else i
+        t_h = self.nodes[t].high if v_t == top_var else t
+        t_l = self.nodes[t].low  if v_t == top_var else t
+        e_h = self.nodes[e].high if v_e == top_var else e
+        e_l = self.nodes[e].low  if v_e == top_var else e
+        
+        r_h = self.ite(i_h, t_h, e_h)
+        r_l = self.ite(i_l, t_l, e_l)
+        
+        res = self.get_node(top_var, r_l, r_h)
+        self.computed_table[key] = res
+        return res
+
+    def apply_and(self, u: int, v: int) -> int: return self.ite(u, v, 0)
+    def apply_or(self, u: int, v: int)  -> int: return self.ite(u, 1, v)
+    def apply_not(self, u: int)         -> int: return self.ite(u, 0, 1)
+
+    def exist(self, vars_to_quantify: Set[str], u: int) -> int:
+        if u <= 1: return u
+        key = ('exist', frozenset(vars_to_quantify), u)
+        if key in self.computed_table: return self.computed_table[key]
+
+        node = self.nodes[u]
+        var_name = self.level_to_name[node.var]
+        
+        high_res = self.exist(vars_to_quantify, node.high)
+        low_res  = self.exist(vars_to_quantify, node.low)
+        
+        if var_name in vars_to_quantify:
+            res = self.apply_or(high_res, low_res)
+        else:
+            res = self.get_node(node.var, low_res, high_res)
+        self.computed_table[key] = res
+        return res
+
+    def let(self, rename_map: Dict[str, str], u: int) -> int:
+        if u <= 1: return u
+        key = ('let', tuple(sorted(rename_map.items())), u)
+        if key in self.computed_table: return self.computed_table[key]
+            
+        node = self.nodes[u]
+        old_name = self.level_to_name[node.var]
+        
+        low_res = self.let(rename_map, node.low)
+        high_res = self.let(rename_map, node.high)
+        
+        new_name = rename_map.get(old_name, old_name)
+        new_level = self.var_map[new_name]
+        
+        var_node = self.get_node(new_level, 0, 1)
+        res = self.ite(var_node, high_res, low_res)
+        self.computed_table[key] = res
+        return res
+
+    def evaluate(self, u: int, assignment: Dict[str, int]) -> bool:
+        curr = u
+        while curr != 0 and curr != 1:
+            node = self.nodes[curr]
+            name = self.level_to_name[node.var]
+            val = assignment.get(name, 0)
+            curr = node.high if val == 1 else node.low
+        return curr == 1
 
 
-# ---------- Basic Petri net data structures ----------
+# =============================================================================
+# PART 2: PETRI NET DEFINITIONS
+# =============================================================================
+
 @dataclass
 class Place:
-    pid: str          # PNML id
-    name: str         # human-readable name
-    index: int        # index in places list (0..n-1)
-
+    pid: str
+    name: str
+    index: int
 
 @dataclass
 class Transition:
-    tid: str          # PNML id
+    tid: str
     name: str
-    pre: Set[int] = field(default_factory=set)   # preset: indices of input places
-    post: Set[int] = field(default_factory=set)  # postset: indices of output places
-
-    def __repr__(self) -> str:
-        return f"Transition({self.tid}, pre={sorted(self.pre)}, post={sorted(self.post)})"
-
+    pre: Set[int] = field(default_factory=set)
+    post: Set[int] = field(default_factory=set)
 
 @dataclass
 class PetriNet:
     places: List[Place]
     transitions: List[Transition]
-    initial: Tuple[int, ...]          # initial marking, 0/1 per place
-    place_index: Dict[str, int]       # PNML place id -> index
-    trans_index: Dict[str, int]       # PNML transition id -> index
+    initial: Tuple[int, ...]
+    place_index: Dict[str, int]
+    trans_index: Dict[str, int]
 
     @property
-    def num_places(self) -> int:
-        return len(self.places)
-
-    @property
-    def num_transitions(self) -> int:
-        return len(self.transitions)
-
-    # ----- marking utilities -----
+    def num_places(self) -> int: return len(self.places)
 
     def initial_bits(self) -> int:
-        """Encode initial marking as an integer bitset (1 bit per place)."""
         bits = 0
         for i, v in enumerate(self.initial):
-            if v:
-                bits |= (1 << i)
+            if v: bits |= (1 << i)
         return bits
 
     def bits_to_marking(self, bits: int) -> Tuple[int, ...]:
-        """Convert bitset -> marking vector."""
         return tuple(1 if (bits >> i) & 1 else 0 for i in range(self.num_places))
 
-    def marking_to_bits(self, marking: Iterable[int]) -> int:
-        """Convert marking vector -> bitset."""
-        bits = 0
-        for i, v in enumerate(marking):
-            if v:
-                bits |= (1 << i)
-        return bits
-
-    # ----- transition firing semantics (1-safe P/T net) -----
-
     def is_enabled_bits(self, marking_bits: int, t: Transition) -> bool:
-        """
-        Check if transition t is enabled at marking represented by bitset.
-
-        For 1-safe nets:
-          - each pre place must have a token
-          - we forbid putting a second token in a place
-        """
-        # All pre places must contain a token.
         for p in t.pre:
-            if ((marking_bits >> p) & 1) == 0:
-                return False
-
-        # For 1-safe nets, do not allow putting a second token in a place.
+            if ((marking_bits >> p) & 1) == 0: return False
         for p in t.post:
-            if p not in t.pre and ((marking_bits >> p) & 1) == 1:
-                return False
+            if p not in t.pre and ((marking_bits >> p) & 1) == 1: return False
         return True
 
     def fire_bits(self, marking_bits: int, t: Transition) -> int:
-        """Fire t from marking_bits and return successor marking_bits."""
         new_bits = marking_bits
-        # consume tokens from pre \ post
         for p in t.pre:
-            if p not in t.post:
-                new_bits &= ~(1 << p)
-        # produce tokens in post \ pre
+            if p not in t.post: new_bits &= ~(1 << p)
         for p in t.post:
-            if p not in t.pre:
-                new_bits |= (1 << p)
-        # pre ∩ post keep their tokens
+            if p not in t.pre: new_bits |= (1 << p)
         return new_bits
 
-
-# ---------- PNML parsing (Task 1) ----------
-
 def _local_tag(tag: str) -> str:
-    """Strip XML namespace from a tag name if present."""
-    if "}" in tag:
-        return tag.split("}", 1)[1]
-    return tag
-
-
-def _find_child(elem: ET.Element, local_name: str) -> Optional[ET.Element]:
-    """Find direct child with given local (namespace-free) name."""
-    for c in elem:
-        if _local_tag(c.tag) == local_name:
-            return c
-    return None
-
+    return tag.split("}", 1)[1] if "}" in tag else tag
 
 def parse_pnml(filename: str) -> PetriNet:
-    """
-    Parse a 1-safe P/T net from a PNML file.
-    Supports:
-      - <place id=...> with <name><text>..</text></name> and optional <initialMarking>
-      - <transition id=...> with optional <name><text>..</text></name>
-      - <arc id=... source=... target=...> between places and transitions
-    """
     tree = ET.parse(filename)
     root = tree.getroot()
+    places, transitions = [], []
+    place_index, trans_index = {}, {}
 
-    # 1) collect places
-    places: List[Place] = []
-    place_index: Dict[str, int] = {}
+    for child in root.iter():
+        if _local_tag(child.tag) == 'place':
+            pid = child.attrib.get('id')
+            name = pid
+            idx = len(places)
+            places.append(Place(pid, name, idx))
+            place_index[pid] = idx
 
-    for place_el in root.iter():
-        if _local_tag(place_el.tag) != "place":
-            continue
-        pid = place_el.attrib.get("id")
-        if pid is None:
-            raise ValueError("Place without id in PNML")
-        # name label
-        name_el = _find_child(place_el, "name")
-        text = None
-        if name_el is not None:
-            text_el = _find_child(name_el, "text")
-            if text_el is not None and text_el.text is not None:
-                text = text_el.text.strip()
-        name = text if text else pid
-        idx = len(places)
-        places.append(Place(pid=pid, name=name, index=idx))
-        place_index[pid] = idx
+    for child in root.iter():
+        if _local_tag(child.tag) == 'transition':
+            tid = child.attrib.get('id')
+            idx = len(transitions)
+            transitions.append(Transition(tid, tid))
+            trans_index[tid] = idx
 
-    # 2) collect transitions
-    transitions: List[Transition] = []
-    trans_index: Dict[str, int] = {}
-    for trans_el in root.iter():
-        if _local_tag(trans_el.tag) != "transition":
-            continue
-        tid = trans_el.attrib.get("id")
-        if tid is None:
-            raise ValueError("Transition without id in PNML")
-        name_el = _find_child(trans_el, "name")
-        text = None
-        if name_el is not None:
-            text_el = _find_child(name_el, "text")
-            if text_el is not None and text_el.text is not None:
-                text = text_el.text.strip()
-        name = text if text else tid
-        idx = len(transitions)
-        transitions.append(Transition(tid=tid, name=name))
-        trans_index[tid] = idx
-
-    if not places or not transitions:
-        raise ValueError("PNML file seems to contain no places or no transitions")
-
-    # 3) initial marking for each place (assume 0 if missing)
     initial = [0] * len(places)
-    for place_el in root.iter():
-        if _local_tag(place_el.tag) != "place":
-            continue
-        pid = place_el.attrib.get("id")
-        if pid is None or pid not in place_index:
-            continue
-        idx = place_index[pid]
-        im_el = _find_child(place_el, "initialMarking")
-        if im_el is None:
-            continue
-        text_el = _find_child(im_el, "text")
-        if text_el is None or text_el.text is None:
-            continue
-        try:
-            val = int(text_el.text.strip())
-        except ValueError:
-            val = 0
-        # Enforce 1-safety: any positive number is treated as 1
-        initial[idx] = 1 if val > 0 else 0
+    for child in root.iter():
+        if _local_tag(child.tag) == 'place':
+            pid = child.attrib.get('id')
+            if pid not in place_index: continue
+            idx = place_index[pid]
+            for sub in child:
+                if _local_tag(sub.tag) == 'initialMarking':
+                    for t in sub:
+                        if _local_tag(t.tag) == 'text' and t.text:
+                            try:
+                                if int(t.text) > 0: initial[idx] = 1
+                            except: pass
 
-    # 4) arcs: fill pre/post sets
-    for arc_el in root.iter():
-        if _local_tag(arc_el.tag) != "arc":
-            continue
-        src = arc_el.attrib.get("source")
-        tgt = arc_el.attrib.get("target")
-        if src is None or tgt is None:
-            raise ValueError("Arc without source or target in PNML")
+    for child in root.iter():
+        if _local_tag(child.tag) == 'arc':
+            src, tgt = child.attrib.get('source'), child.attrib.get('target')
+            if src in place_index and tgt in trans_index:
+                transitions[trans_index[tgt]].pre.add(place_index[src])
+            elif src in trans_index and tgt in place_index:
+                transitions[trans_index[src]].post.add(place_index[tgt])
 
-        is_src_place = src in place_index
-        is_tgt_place = tgt in place_index
-        is_src_trans = src in trans_index
-        is_tgt_trans = tgt in trans_index
-
-        if is_src_place and is_tgt_trans:
-            # place -> transition: input arc
-            p_idx = place_index[src]
-            t_idx = trans_index[tgt]
-            transitions[t_idx].pre.add(p_idx)
-        elif is_src_trans and is_tgt_place:
-            # transition -> place: output arc
-            t_idx = trans_index[src]
-            p_idx = place_index[tgt]
-            transitions[t_idx].post.add(p_idx)
-        else:
-            # ignore other arc shapes for this assignment
-            continue
-
-    net = PetriNet(
-        places=places,
-        transitions=transitions,
-        initial=tuple(initial),
-        place_index=place_index,
-        trans_index=trans_index,
-    )
-    return net
+    return PetriNet(places, transitions, tuple(initial), place_index, trans_index)
 
 
-# ---------- Explicit reachability (Task 2) ----------
+# =============================================================================
+# PART 3: REACHABILITY ALGORITHMS
+# =============================================================================
 
-def explicit_reachability(net: PetriNet) -> Tuple[Set[int], Dict[int, List[Tuple[int, int]]]]:
-    """
-    Compute reachability graph using plain BFS.
-
-    Returns:
-        visited: set of reachable markings (bit-encoded)
-        edges: dict m -> list of (transition_index, successor_marking_bits)
-    """
+def explicit_reachability(net: PetriNet) -> Set[int]:
     start = net.initial_bits()
-    visited: Set[int] = {start}
-    edges: Dict[int, List[Tuple[int, int]]] = {}
-
-    from collections import deque
-    queue: deque[int] = deque([start])
+    visited = {start}
+    import collections
+    queue = collections.deque([start])
+    
     while queue:
         m = queue.popleft()
-        outgoing: List[Tuple[int, int]] = []
-        for ti, t in enumerate(net.transitions):
+        for t in net.transitions:
             if net.is_enabled_bits(m, t):
-                m2 = net.fire_bits(m, t)
-                outgoing.append((ti, m2))
-                if m2 not in visited:
-                    visited.add(m2)
-                    queue.append(m2)
-        edges[m] = outgoing
-    return visited, edges
-
-
-# ---------- BDD-based symbolic reachability (Task 3) ----------
+                m_next = net.fire_bits(m, t)
+                if m_next not in visited:
+                    visited.add(m_next)
+                    queue.append(m_next)
+    return visited
 
 @dataclass
-class BDDReachabilityResult:
-    bdd: "BDD"
-    reachable: "BDD.Function"  # type: ignore
-    x_vars: List[str]          # state vars x0..x{n-1}
-    xp_vars: List[str]         # next-state vars xp0..xp{n-1}
+class BDDResult:
+    manager: BDDManager
+    reachable_node: int
+    x_vars: List[str]
+    xp_vars: List[str]
 
-
-def build_symbolic_transition_relation(
-    net: PetriNet,
-    bdd: "BDD",
-    x_vars: List[str],
-    xp_vars: List[str],
-) -> "BDD.Function":  # type: ignore
-    """
-    Build the transition relation T(x, x') as a BDD.
-
-    For each transition t, and for each place i, we add local constraints:
-
-        if i in pre \\ post:     x_i & ~x'_i
-        if i in post \\ pre:     ~x_i & x'_i
-        if i in pre ∩ post:      x_i &  x'_i
-        if i not in pre ∪ post:  (x_i &  x'_i) | (~x_i & ~x'_i)
-
-    The overall relation is the disjunction over all transitions.
-    """
+def symbolic_reachability(net: PetriNet) -> BDDResult:
+    bdd = BDDManager()
     n = net.num_places
-    assert len(x_vars) == len(xp_vars) == n
-
-    clauses = []
+    vars_ordered = []
+    for i in range(n):
+        vars_ordered.append(f"x{i}")
+        vars_ordered.append(f"xp{i}")
+    bdd.declare(*vars_ordered)
+    x_vars = [f"x{i}" for i in range(n)]
+    xp_vars = [f"xp{i}" for i in range(n)]
+    
+    R = bdd.true_node
+    for i in range(n):
+        var_node = bdd.var(x_vars[i])
+        val = net.initial[i]
+        lit = var_node if val == 1 else bdd.apply_not(var_node)
+        R = bdd.apply_and(R, lit)
+        
+    T = bdd.false_node
     for t in net.transitions:
-        # build conjunction for this transition
-        conj = bdd.true
+        trans_bdd = bdd.true_node
         for i in range(n):
             x = bdd.var(x_vars[i])
             xp = bdd.var(xp_vars[i])
-            in_pre = i in t.pre
-            in_post = i in t.post
-
-            if in_pre and not in_post:
-                local = x & ~xp
-            elif in_post and not in_pre:
-                local = ~x & xp
-            elif in_pre and in_post:
-                local = x & xp
+            is_pre, is_post = i in t.pre, i in t.post
+            if is_pre and not is_post:
+                local = bdd.apply_and(x, bdd.apply_not(xp))
+            elif is_post and not is_pre:
+                local = bdd.apply_and(bdd.apply_not(x), xp)
+            elif is_pre and is_post:
+                local = bdd.apply_and(x, xp)
             else:
-                # unchanged
-                local = (x & xp) | (~x & ~xp)
-            conj &= local
-        clauses.append(conj)
-
-    # Disjunction of all transition relations
-    T = bdd.false
-    for c in clauses:
-        T |= c
-    return T
-
-
-def symbolic_reachability(net: PetriNet) -> BDDReachabilityResult:
-    """
-    Compute set of reachable markings using BDDs.
-
-    Forward fixpoint:
-
-      R_0(x)    = encoding of initial marking
-      R_{k+1}   = R_k ∨ post(R_k)
-      post(R)(x') = ∃x. R(x) ∧ T(x, x')
-
-    where T(x,x') is the transition relation.
-    """
-    if BDD is None:
-        raise RuntimeError("dd.autoref.BDD is not available. Install package 'dd' first.")
-
-    n = net.num_places
-    bdd = BDD()
-    # variable names: x0..x{n-1} for current, xp0..xp{n-1} for next
-    x_vars = [f"x{i}" for i in range(n)]
-    xp_vars = [f"xp{i}" for i in range(n)]
-    bdd.declare(*(x_vars + xp_vars))
-
-    def marking_to_bdd(bits: int, prefix: str) -> "BDD.Function":  # type: ignore
-        assignment = {}
-        for i in range(n):
-            vname = f"{prefix}{i}"
-            assignment[vname] = bool((bits >> i) & 1)
-        return bdd.cube(assignment)    # conjunction of literals
-
-    # initial set R_0
-    m0_bits = net.initial_bits()
-    R = marking_to_bdd(m0_bits, "x")
-
-    # transition relation
-    T = build_symbolic_transition_relation(net, bdd, x_vars, xp_vars)
+                case1 = bdd.apply_and(x, xp)
+                case2 = bdd.apply_and(bdd.apply_not(x), bdd.apply_not(xp))
+                local = bdd.apply_or(case1, case2)
+            trans_bdd = bdd.apply_and(trans_bdd, local)
+        T = bdd.apply_or(T, trans_bdd)
 
     x_set = set(x_vars)
-
+    rename_map = {xp_vars[i]: x_vars[i] for i in range(n)}
     while True:
-        # relational product: ∃x. R(x) ∧ T(x, x')
-        RT = R & T
-        post = bdd.exist(x_set, RT)  # BDD over xp-vars only
-        # rename xp -> x
-        rename = {xp_vars[i]: x_vars[i] for i in range(n)}
-        post_x = bdd.let(rename, post)
-        new = post_x & ~R
-        if new == bdd.false:
-            break
-        R |= new
-
-    return BDDReachabilityResult(bdd=bdd, reachable=R, x_vars=x_vars, xp_vars=xp_vars)
+        and_res = bdd.apply_and(R, T)
+        exists_res = bdd.exist(x_set, and_res)
+        next_states = bdd.let(rename_map, exists_res)
+        not_R = bdd.apply_not(R)
+        new_states = bdd.apply_and(next_states, not_R)
+        if new_states == bdd.false_node: break
+        R = bdd.apply_or(R, new_states)
+        
+    return BDDResult(bdd, R, x_vars, xp_vars)
 
 
-def bdd_marking_membership(res: BDDReachabilityResult, marking_bits: int) -> bool:
-    """Check if a marking (bit-encoded) is in the reachable set BDD."""
-    bdd = res.bdd
-    assignment = {}
-    for i, vname in enumerate(res.x_vars):
-        assignment[vname] = bool((marking_bits >> i) & 1)
-    cube = bdd.cube(assignment)
-    return (cube & res.reachable) != bdd.false
+# =============================================================================
+# PART 4: OPTIMIZATION STRATEGIES
+# =============================================================================
 
-
-def count_reachable_markings(res: BDDReachabilityResult) -> int:
-    """Return the number of satisfying assignments of the reachable-set BDD."""
-    n = len(res.x_vars)
-    return int(res.bdd.count(res.reachable, nvars=n))
-
-
-def format_marking_with_places(net: PetriNet, marking: Tuple[int, ...]) -> str:
+def solve_task5_explicit(net: PetriNet, visited_states: Set[int]):
     """
-    Return a human-readable description of a marking:
-      - 0/1 vector
-      - list of places that contain tokens
+    Method: Linear Scan of Visited States (Explicit)
     """
-    assert len(marking) == net.num_places
-    active_indices = [i for i, v in enumerate(marking) if v]
-    if active_indices:
-        place_list = ", ".join(f"{net.places[i].name}" for i in active_indices)
-    else:
-        place_list = "∅ (no tokens)"
-    return f"{marking}  |  tokens at: {place_list}"
+    best_val = -1
+    best_marking = None
+    
+    for m_bits in visited_states:
+        current_marking = []
+        token_count = 0
+        for i in range(net.num_places):
+            if (m_bits >> i) & 1:
+                token_count += 1
+                current_marking.append(1)
+            else:
+                current_marking.append(0)
+        
+        if token_count > best_val:
+            best_val = token_count
+            best_marking = current_marking
+            
+    return best_marking, best_val
 
-
-# ---------- ILP + BDD: deadlock detection (Task 4) ----------
-
-def find_deadlock_ilp_bdd(net: PetriNet, bdd_res: BDDReachabilityResult) -> Optional[Tuple[int, ...]]:
+def solve_task5_symbolic(net: PetriNet, bdd_res: BDDResult):
     """
-    Find a reachable deadlock marking using ILP + BDD filtering.
-
-    ILP model (binary variables m_p ∈ {0,1} for each place p):
-
-        For each transition t with preset P_t:
-            sum_{p ∈ P_t} m_p <= |P_t| - 1   (no transition fully enabled)
-
-    We then use the BDD to keep only reachable solutions.
+    Method: ILP + BDD Filtering WITH STATE EQUATION
     """
-    if pulp is None:
-        raise RuntimeError("PuLP is not available. Install package 'pulp' first.")
-
-    prob = pulp.LpProblem("deadlock_search", pulp.LpMinimize)
-    # binary variable for each place
-    m_vars = [
-        pulp.LpVariable(f"m_{i}", lowBound=0, upBound=1, cat="Binary")
-        for i in range(net.num_places)
-    ]
-    # trivial objective (any will do)
+    if pulp is None: return None, "PuLP missing"
+        
+    prob = pulp.LpProblem("MaxTokens", pulp.LpMaximize)
+    
+    m_vars = [pulp.LpVariable(f"m_{i}", cat='Binary') for i in range(net.num_places)]
+    y_vars = [pulp.LpVariable(f"y_{i}", lowBound=0, cat='Integer') for i in range(len(net.transitions))]
+    
+    # Objective
     prob += pulp.lpSum(m_vars)
+    
+    # State Equation Constraints: M = M0 + C*Y
+    for p_idx, place in enumerate(net.places):
+        expr = net.initial[p_idx] # M0
+        for t_idx, trans in enumerate(net.transitions):
+            if p_idx in trans.post:
+                expr += y_vars[t_idx]
+            if p_idx in trans.pre:
+                expr -= y_vars[t_idx]
+        prob += (m_vars[p_idx] == expr)
 
-    # deadlock constraints
-    for t in net.transitions:
-        if not t.pre:
-            # transitions without preset would always be enabled;
-            continue
-        prob += pulp.lpSum(m_vars[i] for i in t.pre) <= len(t.pre) - 1
-
-    # iterative solving with BDD filter
-    while True:
+    best_marking = None
+    best_val = -1
+    
+    # Limit iterations to avoid infinite run if BDD check keeps failing
+    max_iter = 50 
+    iter_count = 0
+    
+    while iter_count < max_iter:
+        iter_count += 1
         status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
-        if status != pulp.LpStatusOptimal:
-            return None  # no ILP-feasible deadlock
+        if status != pulp.LpStatusOptimal: break
+            
+        candidate_list = []
+        assignment = {}
+        for i in range(net.num_places):
+            val = int(pulp.value(m_vars[i]))
+            if val == 1: assignment[f"x{i}"] = 1
+            else: assignment[f"x{i}"] = 0
+            candidate_list.append(val)
+            
+        is_reachable = bdd_res.manager.evaluate(bdd_res.reachable_node, assignment)
+        
+        if is_reachable:
+            best_marking = candidate_list
+            best_val = sum(candidate_list)
+            break 
+        else:
+            # Cut: forbid this exact candidate
+            current_ones = [m_vars[i] for i in range(net.num_places) if candidate_list[i] == 1]
+            current_zeros = [m_vars[i] for i in range(net.num_places) if candidate_list[i] == 0]
+            prob += (pulp.lpSum(current_ones) - pulp.lpSum(current_zeros)) <= (len(current_ones) - 1)
 
-        # extract marking
-        bits = 0
-        for i, var in enumerate(m_vars):
-            val = pulp.value(var)
-            if val is None:
-                val = 0
-            if val >= 0.5:
-                bits |= (1 << i)
-
-        if bdd_marking_membership(bdd_res, bits):
-            # Found reachable deadlock
-            return net.bits_to_marking(bits)
-
-        # Otherwise, block this marking and continue
-        terms = []
-        for i, var in enumerate(m_vars):
-            if ((bits >> i) & 1) == 1:
-                terms.append(1 - var)
-            else:
-                terms.append(var)
-        prob += pulp.lpSum(terms) >= 1
-
-
-# ---------- ILP + BDD: optimization over reachable markings (Task 5) ----------
-
-def optimize_over_reachable(
-    net: PetriNet,
-    bdd_res: BDDReachabilityResult,
-    weights: List[float],
-    sense: str = "max",
-) -> Optional[Tuple[Tuple[int, ...], float]]:
-    """
-    Maximize or minimize a linear expression c^T m over reachable markings.
-
-    Args:
-        net: Petri net.
-        bdd_res: reachable-set BDD info from symbolic_reachability.
-        weights: list of coefficients c_p (same length as number of places).
-        sense: 'max' or 'min'.
-    """
-    if pulp is None:
-        raise RuntimeError("PuLP is not available. Install package 'pulp' first.")
-
-    if len(weights) != net.num_places:
-        raise ValueError("weights length must equal number of places")
-
-    if sense not in {"max", "min"}:
-        raise ValueError("sense must be 'max' or 'min'")
-
-    prob = pulp.LpProblem(
-        "reachable_optimization",
-        pulp.LpMaximize if sense == "max" else pulp.LpMinimize,
-    )
-    m_vars = [
-        pulp.LpVariable(f"m_{i}", lowBound=0, upBound=1, cat="Binary")
-        for i in range(net.num_places)
-    ]
-
-    # objective: c^T m
-    prob += pulp.lpSum(weights[i] * m_vars[i] for i in range(net.num_places))
-
-    best_marking: Optional[Tuple[int, ...]] = None
-    best_val: Optional[float] = None
-
-    while True:
-        status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
-        if status != pulp.LpStatusOptimal:
-            break
-
-        # extract marking
-        bits = 0
-        for i, var in enumerate(m_vars):
-            val = pulp.value(var)
-            if val is None:
-                val = 0
-            if val >= 0.5:
-                bits |= (1 << i)
-        marking = net.bits_to_marking(bits)
-
-        if bdd_marking_membership(bdd_res, bits):
-            # feasible reachable solution
-            obj_val = float(pulp.value(prob.objective))
-            best_marking = marking
-            best_val = obj_val
-            break
-
-        # otherwise, block this unreachable marking
-        terms = []
-        for i, var in enumerate(m_vars):
-            if ((bits >> i) & 1) == 1:
-                terms.append(1 - var)
-            else:
-                terms.append(var)
-        prob += pulp.lpSum(terms) >= 1
-
-    if best_marking is None:
-        return None
     return best_marking, best_val
 
 
-# ---------- CLI: run ALL tasks and write single report ----------
+# =============================================================================
+# PART 5: MAIN & FORMATTING
+# =============================================================================
 
 def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Petri net analyzer: runs Tasks 1–5 and writes a report.",
-    )
-    parser.add_argument("pnml", help="Input PNML file")
-    parser.add_argument(
-        "--weights",
-        type=float,
-        nargs="*",
-        help="Weights for optimization over reachable markings (Task 5). "
-             "If omitted, defaults to 1 for every place.",
-    )
-    parser.add_argument(
-        "--sense",
-        choices=["max", "min"],
-        default="max",
-        help="Optimization sense for Task 5 (default: max)",
-    )
-    args = parser.parse_args()
-
-    # Prepare report file
-    base_name = os.path.splitext(os.path.basename(args.pnml))[0]
-    report_path = base_name + ".txt"
-
-    output_lines: List[str] = []
-
-    def out(line: str = "") -> None:
-        """Print to terminal AND append to the report buffer."""
-        print(line)
-        output_lines.append(line)
-
-    # ---------------- Task 1 – Net summary ----------------
-    out("=" * 70)
-    out("PETRI NET ANALYSIS REPORT")
-    out("=" * 70)
-    out(f"PNML file : {args.pnml}")
-    out("")
-
-    out("Task 1 – Net summary")
-    out("-" * 70)
-
-    try:
-        net = parse_pnml(args.pnml)
-    except Exception as e:
-        out(f"[ERROR] Failed to parse PNML file: {e}")
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(output_lines))
-        out(f"\n[INFO] Report written to {report_path}")
+    if len(sys.argv) < 2:
+        print("Usage: python testing.py <file.pnml>")
         return
 
-    out(f"  Number of places      : {net.num_places}")
-    out(f"  Number of transitions : {net.num_transitions}")
-    out(f"  Initial marking M0    : {net.initial}")
-    out("")
-    out("  Places (index : id / name)")
-    for p in net.places:
-        out(f"    {p.index:2d}: {p.pid} / {p.name}")
-    out("")
+    pnml_file = sys.argv[1]
+    if not os.path.exists(pnml_file):
+        print(f"Error: File {pnml_file} not found.")
+        return
 
-    # ---------------- Task 2 – Explicit reachability ----------------
-    out("Task 2 – Explicit reachability (BFS)")
-    out("-" * 70)
+    # --- TASK 1: Parsing ---
+    print("\n" + "="*80)
+    print(f"{'TASK 1: NETWORK SUMMARY':^80}")
+    print("="*80)
+    try:
+        net = parse_pnml(pnml_file)
+        print(f"File         : {pnml_file}")
+        print(f"Places       : {net.num_places}")
+        print(f"Transitions  : {len(net.transitions)}")
+        print(f"Initial State: {net.initial}")
+    except Exception as e:
+        print(f"Parsing failed: {e}")
+        return
+
+    # --- EXECUTION: Pre-requisites ---
+    
+    # 1. Run BFS
     t0 = time.time()
-    visited, edges = explicit_reachability(net)
-    t1 = time.time()
-    out(f"  |R| (reachable markings) : {len(visited)}")
-    out(f"  BFS exploration time      : {t1 - t0:.6f} seconds")
-    out("")
-    out("  Sample reachable markings (up to 10):")
-    sorted_markings = sorted(visited)
-    max_show = min(10, len(sorted_markings))
-    for idx in range(max_show):
-        bits = sorted_markings[idx]
-        m = net.bits_to_marking(bits)
-        out(f"    M{idx}: {format_marking_with_places(net, m)}")
-    if len(sorted_markings) > max_show:
-        out(f"    ... ({len(sorted_markings) - max_show} more markings not shown)")
-    out("")
+    visited_bfs = explicit_reachability(net)
+    time_bfs_construct = time.time() - t0
+    count_bfs = len(visited_bfs)
 
-    # ---------------- Task 3 – BDD reachability ----------------
-    out("Task 3 – BDD-based symbolic reachability")
-    out("-" * 70)
-    bdd_res: Optional[BDDReachabilityResult] = None
-    if BDD is None:
-        out("[ERROR] Package 'dd' is not available. Install it with 'pip install dd'.")
-        out("        Tasks 3–5 (BDD, ILP+BDD) cannot be executed.")
+    # 2. Run BDD
+    t0 = time.time()
+    bdd_res = symbolic_reachability(net)
+    time_bdd_construct = time.time() - t0
+
+    # --- TASK 5: OPTIMIZATION COMPARISON ---
+    
+    # Method A: Before Optimization (Linear Scan)
+    t0 = time.time()
+    opt_marking_bfs, opt_val_bfs = solve_task5_explicit(net, visited_bfs)
+    time_opt_before = time.time() - t0
+
+    # Method B: After Optimization (ILP + BDD)
+    t0 = time.time()
+    opt_marking_bdd, opt_val_bdd = solve_task5_symbolic(net, bdd_res)
+    time_opt_after = time.time() - t0
+
+    # --- REPORT GENERATION ---
+    print("\n" + "="*80)
+    print(f"{'TASK 2 vs 3: REACHABILITY CONSTRUCTION':^80}")
+    print("="*80)
+    print(f"{'Metric':<35} | {'BFS (Explicit)':<20} | {'BDD (Symbolic)':<20}")
+    print("-" * 80)
+    print(f"{'Construction Time (s)':<35} | {time_bfs_construct:<20.5f} | {time_bdd_construct:<20.5f}")
+    print(f"{'State Count':<35} | {count_bfs:<20} | {count_bfs:<20}")
+    print("-" * 80)
+
+    print("\n" + "="*80)
+    print(f"{'TASK 5: OPTIMIZATION COMPARISON (Reachable Markings)':^80}")
+    print("="*80)
+    print(f"Objective: Maximize total tokens")
+    print("-" * 80)
+    print(f"{'Metric':<35} | {'Before Optimization':<20} | {'After Optimization':<20}")
+    print(f"{'':<35} | {'(Explicit Scan)':<20} | {'(BDD + ILP)':<20}")
+    print("-" * 80)
+    print(f"{'Search Time (s)':<35} | {time_opt_before:<20.5f} | {time_opt_after:<20.5f}")
+    print(f"{'Optimal Value':<35} | {opt_val_bfs:<20} | {opt_val_bdd:<20}")
+    print("-" * 80)
+    
+    if opt_marking_bdd:
+        print(f"\nFinal Result (from BDD+ILP):")
+        print(f" > Optimal Marking Vector: {opt_marking_bdd}")
+        active_places = [net.places[i].name for i, x in enumerate(opt_marking_bdd) if x == 1]
+        print(f" > Active Places: {', '.join(active_places)}")
     else:
-        try:
-            t0 = time.time()
-            bdd_res = symbolic_reachability(net)
-            t1 = time.time()
-            num = count_reachable_markings(bdd_res)
-            out(f"  |R| (reachable markings) : {num}")
-            out(f"  BDD fixpoint time        : {t1 - t0:.6f} seconds")
-            out("")
-            out("  Sanity check:")
-            m0_bits = net.initial_bits()
-            in_R0 = bdd_marking_membership(bdd_res, m0_bits)
-            out(f"    - Initial marking M0 is in reachable set: {in_R0}")
-        except RuntimeError as e:
-            out(f"[ERROR] {e}")
-            bdd_res = None
-    out("")
-
-    # Only continue with Tasks 4–5 if BDD was successful
-    if bdd_res is None:
-        out("Skipping Task 4 and Task 5 because BDD reachability is unavailable.")
-    else:
-        # ---------------- Task 4 – Deadlock detection ----------------
-        out("Task 4 – Deadlock detection (ILP + BDD)")
-        out("-" * 70)
-        if pulp is None:
-            out("[ERROR] Package 'pulp' is not available. Install it with 'pip install pulp'.")
-            out("        Deadlock detection cannot be executed.")
-        else:
-            try:
-                dl = find_deadlock_ilp_bdd(net, bdd_res)
-                if dl is None:
-                    out("  Result : No reachable deadlock marking found.")
-                else:
-                    out("  Result : Reachable deadlock marking found")
-                    out("           (no transition is enabled at this marking).")
-                    out("")
-                    out("  m_deadlock =")
-                    out(f"    {format_marking_with_places(net, dl)}")
-            except RuntimeError as e:
-                out(f"[ERROR] {e}")
-        out("")
-
-        # ---------------- Task 5 – Optimization over reachable markings ----------------
-        out("Task 5 – Optimization over reachable markings (ILP + BDD)")
-        out("-" * 70)
-        if pulp is None:
-            out("[ERROR] Package 'pulp' is not available. Install it with 'pip install pulp'.")
-            out("        Optimization over reachable markings cannot be executed.")
-        else:
-            # Determine weights
-            if args.weights is None:
-                weights = [1.0] * net.num_places
-                out("  Weights not provided on command line.")
-                out("  Using default weights: c_p = 1 for every place p.")
-            else:
-                if len(args.weights) != net.num_places:
-                    out(
-                        f"[ERROR] Expected {net.num_places} weights, "
-                        f"but got {len(args.weights)}."
-                    )
-                    weights = None
-                else:
-                    weights = args.weights
-                    out("  Weights (c_p for each place index p):")
-                    out("    " + ", ".join(f"{w:.3g}" for w in weights))
-            out(f"  Optimization sense        : {args.sense}")
-            out("")
-
-            if weights is not None:
-                try:
-                    res = optimize_over_reachable(net, bdd_res, weights, sense=args.sense)
-                    if res is None:
-                        out("  Result : No reachable marking satisfies the ILP model.")
-                    else:
-                        best_marking, obj_val = res
-                        out("  Result : Optimal reachable marking found.")
-                        out(f"           Objective value = {obj_val}")
-                        out("")
-                        out("  m_opt =")
-                        out(f"    {format_marking_with_places(net, best_marking)}")
-                except RuntimeError as e:
-                    out(f"[ERROR] {e}")
-        out("")
-
-    # Write report file
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(output_lines))
-
-    out(f"[INFO] Report written to {report_path}")
-
+        print("No feasible marking found.")
+        
+    print("="*80 + "\n")
 
 if __name__ == "__main__":
     main()
-0

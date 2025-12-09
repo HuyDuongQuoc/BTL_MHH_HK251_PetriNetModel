@@ -1,0 +1,493 @@
+<?xml version="1.0" ?>
+<pnml xmlns="http://www.pnml.org/version-2009/grammar/pnml">
+  <net id="large_net" type="http://www.pnml.org/version-2009/grammar/ptnet">
+    <page id="page1">
+      <place id="p_ready_0">
+        <name>
+          <text>Ready_0</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_0">
+        <name>
+          <text>Busy_0</text>
+        </name>
+      </place>
+      <transition id="t_start_0">
+        <name>
+          <text>Start_0</text>
+        </name>
+      </transition>
+      <transition id="t_end_0">
+        <name>
+          <text>End_0</text>
+        </name>
+      </transition>
+      <arc id="a_0_1" source="p_ready_0" target="t_start_0"/>
+      <arc id="a_0_2" source="t_start_0" target="p_busy_0"/>
+      <arc id="a_0_3" source="p_busy_0" target="t_end_0"/>
+      <arc id="a_0_4" source="t_end_0" target="p_ready_0"/>
+      <place id="p_ready_1">
+        <name>
+          <text>Ready_1</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_1">
+        <name>
+          <text>Busy_1</text>
+        </name>
+      </place>
+      <transition id="t_start_1">
+        <name>
+          <text>Start_1</text>
+        </name>
+      </transition>
+      <transition id="t_end_1">
+        <name>
+          <text>End_1</text>
+        </name>
+      </transition>
+      <arc id="a_1_1" source="p_ready_1" target="t_start_1"/>
+      <arc id="a_1_2" source="t_start_1" target="p_busy_1"/>
+      <arc id="a_1_3" source="p_busy_1" target="t_end_1"/>
+      <arc id="a_1_4" source="t_end_1" target="p_ready_1"/>
+      <place id="p_ready_2">
+        <name>
+          <text>Ready_2</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_2">
+        <name>
+          <text>Busy_2</text>
+        </name>
+      </place>
+      <transition id="t_start_2">
+        <name>
+          <text>Start_2</text>
+        </name>
+      </transition>
+      <transition id="t_end_2">
+        <name>
+          <text>End_2</text>
+        </name>
+      </transition>
+      <arc id="a_2_1" source="p_ready_2" target="t_start_2"/>
+      <arc id="a_2_2" source="t_start_2" target="p_busy_2"/>
+      <arc id="a_2_3" source="p_busy_2" target="t_end_2"/>
+      <arc id="a_2_4" source="t_end_2" target="p_ready_2"/>
+      <place id="p_ready_3">
+        <name>
+          <text>Ready_3</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_3">
+        <name>
+          <text>Busy_3</text>
+        </name>
+      </place>
+      <transition id="t_start_3">
+        <name>
+          <text>Start_3</text>
+        </name>
+      </transition>
+      <transition id="t_end_3">
+        <name>
+          <text>End_3</text>
+        </name>
+      </transition>
+      <arc id="a_3_1" source="p_ready_3" target="t_start_3"/>
+      <arc id="a_3_2" source="t_start_3" target="p_busy_3"/>
+      <arc id="a_3_3" source="p_busy_3" target="t_end_3"/>
+      <arc id="a_3_4" source="t_end_3" target="p_ready_3"/>
+      <place id="p_ready_4">
+        <name>
+          <text>Ready_4</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_4">
+        <name>
+          <text>Busy_4</text>
+        </name>
+      </place>
+      <transition id="t_start_4">
+        <name>
+          <text>Start_4</text>
+        </name>
+      </transition>
+      <transition id="t_end_4">
+        <name>
+          <text>End_4</text>
+        </name>
+      </transition>
+      <arc id="a_4_1" source="p_ready_4" target="t_start_4"/>
+      <arc id="a_4_2" source="t_start_4" target="p_busy_4"/>
+      <arc id="a_4_3" source="p_busy_4" target="t_end_4"/>
+      <arc id="a_4_4" source="t_end_4" target="p_ready_4"/>
+      <place id="p_ready_5">
+        <name>
+          <text>Ready_5</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_5">
+        <name>
+          <text>Busy_5</text>
+        </name>
+      </place>
+      <transition id="t_start_5">
+        <name>
+          <text>Start_5</text>
+        </name>
+      </transition>
+      <transition id="t_end_5">
+        <name>
+          <text>End_5</text>
+        </name>
+      </transition>
+      <arc id="a_5_1" source="p_ready_5" target="t_start_5"/>
+      <arc id="a_5_2" source="t_start_5" target="p_busy_5"/>
+      <arc id="a_5_3" source="p_busy_5" target="t_end_5"/>
+      <arc id="a_5_4" source="t_end_5" target="p_ready_5"/>
+      <place id="p_ready_6">
+        <name>
+          <text>Ready_6</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_6">
+        <name>
+          <text>Busy_6</text>
+        </name>
+      </place>
+      <transition id="t_start_6">
+        <name>
+          <text>Start_6</text>
+        </name>
+      </transition>
+      <transition id="t_end_6">
+        <name>
+          <text>End_6</text>
+        </name>
+      </transition>
+      <arc id="a_6_1" source="p_ready_6" target="t_start_6"/>
+      <arc id="a_6_2" source="t_start_6" target="p_busy_6"/>
+      <arc id="a_6_3" source="p_busy_6" target="t_end_6"/>
+      <arc id="a_6_4" source="t_end_6" target="p_ready_6"/>
+      <place id="p_ready_7">
+        <name>
+          <text>Ready_7</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_7">
+        <name>
+          <text>Busy_7</text>
+        </name>
+      </place>
+      <transition id="t_start_7">
+        <name>
+          <text>Start_7</text>
+        </name>
+      </transition>
+      <transition id="t_end_7">
+        <name>
+          <text>End_7</text>
+        </name>
+      </transition>
+      <arc id="a_7_1" source="p_ready_7" target="t_start_7"/>
+      <arc id="a_7_2" source="t_start_7" target="p_busy_7"/>
+      <arc id="a_7_3" source="p_busy_7" target="t_end_7"/>
+      <arc id="a_7_4" source="t_end_7" target="p_ready_7"/>
+      <place id="p_ready_8">
+        <name>
+          <text>Ready_8</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_8">
+        <name>
+          <text>Busy_8</text>
+        </name>
+      </place>
+      <transition id="t_start_8">
+        <name>
+          <text>Start_8</text>
+        </name>
+      </transition>
+      <transition id="t_end_8">
+        <name>
+          <text>End_8</text>
+        </name>
+      </transition>
+      <arc id="a_8_1" source="p_ready_8" target="t_start_8"/>
+      <arc id="a_8_2" source="t_start_8" target="p_busy_8"/>
+      <arc id="a_8_3" source="p_busy_8" target="t_end_8"/>
+      <arc id="a_8_4" source="t_end_8" target="p_ready_8"/>
+      <place id="p_ready_9">
+        <name>
+          <text>Ready_9</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_9">
+        <name>
+          <text>Busy_9</text>
+        </name>
+      </place>
+      <transition id="t_start_9">
+        <name>
+          <text>Start_9</text>
+        </name>
+      </transition>
+      <transition id="t_end_9">
+        <name>
+          <text>End_9</text>
+        </name>
+      </transition>
+      <arc id="a_9_1" source="p_ready_9" target="t_start_9"/>
+      <arc id="a_9_2" source="t_start_9" target="p_busy_9"/>
+      <arc id="a_9_3" source="p_busy_9" target="t_end_9"/>
+      <arc id="a_9_4" source="t_end_9" target="p_ready_9"/>
+      <place id="p_ready_10">
+        <name>
+          <text>Ready_10</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_10">
+        <name>
+          <text>Busy_10</text>
+        </name>
+      </place>
+      <transition id="t_start_10">
+        <name>
+          <text>Start_10</text>
+        </name>
+      </transition>
+      <transition id="t_end_10">
+        <name>
+          <text>End_10</text>
+        </name>
+      </transition>
+      <arc id="a_10_1" source="p_ready_10" target="t_start_10"/>
+      <arc id="a_10_2" source="t_start_10" target="p_busy_10"/>
+      <arc id="a_10_3" source="p_busy_10" target="t_end_10"/>
+      <arc id="a_10_4" source="t_end_10" target="p_ready_10"/>
+      <place id="p_ready_11">
+        <name>
+          <text>Ready_11</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_11">
+        <name>
+          <text>Busy_11</text>
+        </name>
+      </place>
+      <transition id="t_start_11">
+        <name>
+          <text>Start_11</text>
+        </name>
+      </transition>
+      <transition id="t_end_11">
+        <name>
+          <text>End_11</text>
+        </name>
+      </transition>
+      <arc id="a_11_1" source="p_ready_11" target="t_start_11"/>
+      <arc id="a_11_2" source="t_start_11" target="p_busy_11"/>
+      <arc id="a_11_3" source="p_busy_11" target="t_end_11"/>
+      <arc id="a_11_4" source="t_end_11" target="p_ready_11"/>
+      <place id="p_ready_12">
+        <name>
+          <text>Ready_12</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_12">
+        <name>
+          <text>Busy_12</text>
+        </name>
+      </place>
+      <transition id="t_start_12">
+        <name>
+          <text>Start_12</text>
+        </name>
+      </transition>
+      <transition id="t_end_12">
+        <name>
+          <text>End_12</text>
+        </name>
+      </transition>
+      <arc id="a_12_1" source="p_ready_12" target="t_start_12"/>
+      <arc id="a_12_2" source="t_start_12" target="p_busy_12"/>
+      <arc id="a_12_3" source="p_busy_12" target="t_end_12"/>
+      <arc id="a_12_4" source="t_end_12" target="p_ready_12"/>
+      <place id="p_ready_13">
+        <name>
+          <text>Ready_13</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_13">
+        <name>
+          <text>Busy_13</text>
+        </name>
+      </place>
+      <transition id="t_start_13">
+        <name>
+          <text>Start_13</text>
+        </name>
+      </transition>
+      <transition id="t_end_13">
+        <name>
+          <text>End_13</text>
+        </name>
+      </transition>
+      <arc id="a_13_1" source="p_ready_13" target="t_start_13"/>
+      <arc id="a_13_2" source="t_start_13" target="p_busy_13"/>
+      <arc id="a_13_3" source="p_busy_13" target="t_end_13"/>
+      <arc id="a_13_4" source="t_end_13" target="p_ready_13"/>
+      <place id="p_ready_14">
+        <name>
+          <text>Ready_14</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_14">
+        <name>
+          <text>Busy_14</text>
+        </name>
+      </place>
+      <transition id="t_start_14">
+        <name>
+          <text>Start_14</text>
+        </name>
+      </transition>
+      <transition id="t_end_14">
+        <name>
+          <text>End_14</text>
+        </name>
+      </transition>
+      <arc id="a_14_1" source="p_ready_14" target="t_start_14"/>
+      <arc id="a_14_2" source="t_start_14" target="p_busy_14"/>
+      <arc id="a_14_3" source="p_busy_14" target="t_end_14"/>
+      <arc id="a_14_4" source="t_end_14" target="p_ready_14"/>
+      <place id="p_ready_15">
+        <name>
+          <text>Ready_15</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_15">
+        <name>
+          <text>Busy_15</text>
+        </name>
+      </place>
+      <transition id="t_start_15">
+        <name>
+          <text>Start_15</text>
+        </name>
+      </transition>
+      <transition id="t_end_15">
+        <name>
+          <text>End_15</text>
+        </name>
+      </transition>
+      <arc id="a_15_1" source="p_ready_15" target="t_start_15"/>
+      <arc id="a_15_2" source="t_start_15" target="p_busy_15"/>
+      <arc id="a_15_3" source="p_busy_15" target="t_end_15"/>
+      <arc id="a_15_4" source="t_end_15" target="p_ready_15"/>
+      <place id="p_ready_16">
+        <name>
+          <text>Ready_16</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_16">
+        <name>
+          <text>Busy_16</text>
+        </name>
+      </place>
+      <transition id="t_start_16">
+        <name>
+          <text>Start_16</text>
+        </name>
+      </transition>
+      <transition id="t_end_16">
+        <name>
+          <text>End_16</text>
+        </name>
+      </transition>
+      <arc id="a_16_1" source="p_ready_16" target="t_start_16"/>
+      <arc id="a_16_2" source="t_start_16" target="p_busy_16"/>
+      <arc id="a_16_3" source="p_busy_16" target="t_end_16"/>
+      <arc id="a_16_4" source="t_end_16" target="p_ready_16"/>
+      <place id="p_ready_17">
+        <name>
+          <text>Ready_17</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="p_busy_17">
+        <name>
+          <text>Busy_17</text>
+        </name>
+      </place>
+      <transition id="t_start_17">
+        <name>
+          <text>Start_17</text>
+        </name>
+      </transition>
+      <transition id="t_end_17">
+        <name>
+          <text>End_17</text>
+        </name>
+      </transition>
+      <arc id="a_17_1" source="p_ready_17" target="t_start_17"/>
+      <arc id="a_17_2" source="t_start_17" target="p_busy_17"/>
+      <arc id="a_17_3" source="p_busy_17" target="t_end_17"/>
+      <arc id="a_17_4" source="t_end_17" target="p_ready_17"/>
+    </page>
+  </net>
+</pnml>
