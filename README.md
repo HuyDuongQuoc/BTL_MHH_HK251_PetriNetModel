@@ -37,13 +37,5 @@ python -m pip install dd pulp
 
 From the folder containing `main.py` and your PNML model, run the command with format as below:
 
-python main.py <model.pnml> [--weights w0 w1 ... w_{n-1}] [--sense max|min]
+python main.py <test.pnml>
 
--In detail command for 3 pnml files:
-```bash
-python main.py simple.pnml
-
-python main.py fork_join_deadlock.pnml  
-
-python main.py escape_room_2players.pnml --weights 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 --sense max
-```
