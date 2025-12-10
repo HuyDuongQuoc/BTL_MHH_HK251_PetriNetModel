@@ -1,8 +1,3 @@
-"""
-Assignment Solution: Petri Net Reachability & Optimization
-Fix: Restored missing attributes in BDDManager to fix AttributeError.
-"""
-
 from __future__ import annotations
 import time
 import os
