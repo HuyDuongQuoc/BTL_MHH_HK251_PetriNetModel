@@ -1,3 +1,14 @@
+"""
+Assignment Solution: Petri Net Reachability, Optimization & Deadlock
+Features:
+  - Custom BDD Implementation
+  - Task 1: PNML Parsing
+  - Task 2 vs 3: BFS vs BDD Comparison
+  - Task 4: Deadlock Detection (Finds ALL Deadlocks) [MODIFIED]
+  - Task 5: Optimization (ILP + BDD)
+  - Output: Writes to both Console and .txt file
+"""
+
 from __future__ import annotations
 import time
 import os
@@ -6,11 +17,28 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple, Any
 import xml.etree.ElementTree as ET
 
-# Try to import pulp for Task 5
+# Try to import pulp for Task 4 & 5
 try:
     import pulp
 except ImportError:
     pulp = None
+
+# =============================================================================
+# HELPER: DUAL LOGGER (Console + File)
+# =============================================================================
+class DualLogger:
+    """Writes output to both stdout and a file simultaneously."""
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "w", encoding='utf-8')
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
 
 # =============================================================================
 # PART 1: CUSTOM BDD IMPLEMENTATION
@@ -27,12 +55,10 @@ class BDDNode:
 
 class BDDManager:
     def __init__(self):
-        # 0 is False, 1 is True. Their var index is effectively infinity.
         self.nodes: Dict[int, BDDNode] = {
             0: BDDNode(float('inf'), None, None), 
             1: BDDNode(float('inf'), None, None)
         }
-        # --- FIX: Restored these attributes ---
         self.false_node = 0
         self.true_node = 1
         
@@ -143,7 +169,6 @@ class BDDManager:
             curr = node.high if val == 1 else node.low
         return curr == 1
 
-
 # =============================================================================
 # PART 2: PETRI NET DEFINITIONS
 # =============================================================================
@@ -244,7 +269,6 @@ def parse_pnml(filename: str) -> PetriNet:
 
     return PetriNet(places, transitions, tuple(initial), place_index, trans_index)
 
-
 # =============================================================================
 # PART 3: REACHABILITY ALGORITHMS
 # =============================================================================
@@ -323,15 +347,92 @@ def symbolic_reachability(net: PetriNet) -> BDDResult:
         
     return BDDResult(bdd, R, x_vars, xp_vars)
 
+# =============================================================================
+# PART 4: DEADLOCK DETECTION (FIND ALL) [MODIFIED]
+# =============================================================================
+
+def solve_task4_deadlock_all(net: PetriNet, bdd_res: BDDResult):
+    """
+    Search for ALL reachable deadlock states.
+    Condition: A state M where NO transition is enabled.
+    Strategy: Iterative ILP solve + Cut constraint.
+    """
+    if pulp is None: return [], "PuLP missing"
+
+    found_deadlocks = []
+    
+    # Setup ILP
+    prob = pulp.LpProblem("DeadlockFinder", pulp.LpMinimize) # Objective irrelevant
+    
+    m_vars = [pulp.LpVariable(f"m_{i}", cat='Binary') for i in range(net.num_places)]
+    y_vars = [pulp.LpVariable(f"y_{i}", lowBound=0, cat='Integer') for i in range(len(net.transitions))]
+    
+    # Objective: Minimize tokens (heuristic)
+    prob += pulp.lpSum(m_vars)
+
+    # 1. State Equation: M = M0 + C*Y
+    for p_idx, place in enumerate(net.places):
+        expr = net.initial[p_idx]
+        for t_idx, trans in enumerate(net.transitions):
+            if p_idx in trans.post: expr += y_vars[t_idx]
+            if p_idx in trans.pre:  expr -= y_vars[t_idx]
+        prob += (m_vars[p_idx] == expr)
+
+    # 2. Deadlock Constraints: All transitions must be DISABLED
+    for t in net.transitions:
+        if not t.pre:
+            return [], "No deadlock possible (Source transition exists)"
+        
+        pre_places_vars = [m_vars[p_idx] for p_idx in t.pre]
+        prob += (pulp.lpSum(pre_places_vars) <= len(t.pre) - 1)
+
+    # 3. Iterative Loop to find multiple solutions
+    max_deadlocks = 10  # Limit to prevent infinite output on huge nets
+    max_iter = 100
+    iter_count = 0
+    
+    while len(found_deadlocks) < max_deadlocks and iter_count < max_iter:
+        iter_count += 1
+        status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
+        if status != pulp.LpStatusOptimal:
+            break # No more candidates found by ILP
+            
+        candidate_list = []
+        assignment = {}
+        for i in range(net.num_places):
+            val = int(pulp.value(m_vars[i]))
+            if val == 1: assignment[f"x{i}"] = 1
+            else: assignment[f"x{i}"] = 0
+            candidate_list.append(val)
+            
+        # Verify Reachability in BDD
+        is_reachable = bdd_res.manager.evaluate(bdd_res.reachable_node, assignment)
+        
+        # Determine constraint for this candidate (Cut Constraint)
+        # Prevents finding this specific state again
+        current_ones = [m_vars[i] for i in range(net.num_places) if candidate_list[i] == 1]
+        current_zeros = [m_vars[i] for i in range(net.num_places) if candidate_list[i] == 0]
+        # Constraint: sum(ones) - sum(zeros) <= count(ones) - 1
+        cut_constraint = (pulp.lpSum(current_ones) - pulp.lpSum(current_zeros)) <= (len(current_ones) - 1)
+        
+        if is_reachable:
+            found_deadlocks.append(candidate_list)
+        
+        # ALWAYS add the cut constraint to move to the next candidate
+        # (Even if unreachable, we don't want ILP to suggest it again)
+        prob += cut_constraint
+
+    if len(found_deadlocks) > 0:
+        return found_deadlocks, f"Found {len(found_deadlocks)} Deadlocks"
+    else:
+        return [], "No deadlock found"
+
 
 # =============================================================================
-# PART 4: OPTIMIZATION STRATEGIES
+# PART 5: OPTIMIZATION (ILP + BDD)
 # =============================================================================
 
 def solve_task5_explicit(net: PetriNet, visited_states: Set[int]):
-    """
-    Method: Linear Scan of Visited States (Explicit)
-    """
     best_val = -1
     best_marking = None
     
@@ -352,9 +453,6 @@ def solve_task5_explicit(net: PetriNet, visited_states: Set[int]):
     return best_marking, best_val
 
 def solve_task5_symbolic(net: PetriNet, bdd_res: BDDResult):
-    """
-    Method: ILP + BDD Filtering WITH STATE EQUATION
-    """
     if pulp is None: return None, "PuLP missing"
         
     prob = pulp.LpProblem("MaxTokens", pulp.LpMaximize)
@@ -362,23 +460,24 @@ def solve_task5_symbolic(net: PetriNet, bdd_res: BDDResult):
     m_vars = [pulp.LpVariable(f"m_{i}", cat='Binary') for i in range(net.num_places)]
     y_vars = [pulp.LpVariable(f"y_{i}", lowBound=0, cat='Integer') for i in range(len(net.transitions))]
     
-    # Objective
-    prob += pulp.lpSum(m_vars)
+    # --- MODIFIED OBJECTIVE: Weight 'Done' highly ---
+    weights = []
+    for p in net.places:
+        if p.name == "Done": weights.append(100)
+        else: weights.append(1)
+            
+    prob += pulp.lpSum([weights[i] * m_vars[i] for i in range(net.num_places)])
     
-    # State Equation Constraints: M = M0 + C*Y
     for p_idx, place in enumerate(net.places):
-        expr = net.initial[p_idx] # M0
+        expr = net.initial[p_idx]
         for t_idx, trans in enumerate(net.transitions):
-            if p_idx in trans.post:
-                expr += y_vars[t_idx]
-            if p_idx in trans.pre:
-                expr -= y_vars[t_idx]
+            if p_idx in trans.post: expr += y_vars[t_idx]
+            if p_idx in trans.pre:  expr -= y_vars[t_idx]
         prob += (m_vars[p_idx] == expr)
 
     best_marking = None
     best_val = -1
     
-    # Limit iterations to avoid infinite run if BDD check keeps failing
     max_iter = 50 
     iter_count = 0
     
@@ -402,7 +501,6 @@ def solve_task5_symbolic(net: PetriNet, bdd_res: BDDResult):
             best_val = sum(candidate_list)
             break 
         else:
-            # Cut: forbid this exact candidate
             current_ones = [m_vars[i] for i in range(net.num_places) if candidate_list[i] == 1]
             current_zeros = [m_vars[i] for i in range(net.num_places) if candidate_list[i] == 0]
             prob += (pulp.lpSum(current_ones) - pulp.lpSum(current_zeros)) <= (len(current_ones) - 1)
@@ -411,7 +509,7 @@ def solve_task5_symbolic(net: PetriNet, bdd_res: BDDResult):
 
 
 # =============================================================================
-# PART 5: MAIN & FORMATTING
+# MAIN EXECUTION
 # =============================================================================
 
 def main():
@@ -423,6 +521,12 @@ def main():
     if not os.path.exists(pnml_file):
         print(f"Error: File {pnml_file} not found.")
         return
+
+    # --- SETUP DUAL LOGGER ---
+    output_file = os.path.splitext(pnml_file)[0] + ".txt"
+    original_stdout = sys.stdout 
+    logger = DualLogger(output_file)
+    sys.stdout = logger
 
     # --- TASK 1: Parsing ---
     print("\n" + "="*80)
@@ -438,24 +542,34 @@ def main():
         print(f"Parsing failed: {e}")
         return
 
-    # --- EXECUTION: Pre-requisites ---
-    
+    # --- EXECUTION: Reachability ---
     # 1. Run BFS
     t0 = time.time()
-    visited_bfs = explicit_reachability(net)
+    try:
+        visited_bfs = explicit_reachability(net)
+        count_bfs = len(visited_bfs)
+    except MemoryError:
+        visited_bfs = set()
+        count_bfs = "OOM"
     time_bfs_construct = time.time() - t0
-    count_bfs = len(visited_bfs)
 
     # 2. Run BDD
     t0 = time.time()
     bdd_res = symbolic_reachability(net)
     time_bdd_construct = time.time() - t0
 
+    # --- TASK 4: DEADLOCK DETECTION (FIND ALL) ---
+    t0 = time.time()
+    deadlocks_list, deadlock_msg = solve_task4_deadlock_all(net, bdd_res)
+    time_deadlock = time.time() - t0
+
     # --- TASK 5: OPTIMIZATION COMPARISON ---
-    
     # Method A: Before Optimization (Linear Scan)
     t0 = time.time()
-    opt_marking_bfs, opt_val_bfs = solve_task5_explicit(net, visited_bfs)
+    if count_bfs != "OOM":
+        opt_marking_bfs, opt_val_bfs = solve_task5_explicit(net, visited_bfs)
+    else:
+        opt_marking_bfs, opt_val_bfs = None, "N/A"
     time_opt_before = time.time() - t0
 
     # Method B: After Optimization (ILP + BDD)
@@ -470,19 +584,36 @@ def main():
     print(f"{'Metric':<35} | {'BFS (Explicit)':<20} | {'BDD (Symbolic)':<20}")
     print("-" * 80)
     print(f"{'Construction Time (s)':<35} | {time_bfs_construct:<20.5f} | {time_bdd_construct:<20.5f}")
-    print(f"{'State Count':<35} | {count_bfs:<20} | {count_bfs:<20}")
+    print(f"{'State Count':<35} | {str(count_bfs):<20} | {str(count_bfs):<20}")
     print("-" * 80)
 
     print("\n" + "="*80)
-    print(f"{'TASK 5: OPTIMIZATION COMPARISON (Reachable Markings)':^80}")
+    print(f"{'TASK 4: DEADLOCK DETECTION (ILP + BDD)':^80}")
     print("="*80)
-    print(f"Objective: Maximize total tokens")
+    print(f"Condition: Reachable state where NO transition is enabled.")
+    print("-" * 80)
+    print(f"Execution Time  : {time_deadlock:.5f} sec")
+    print(f"Status          : {deadlock_msg}")
+    
+    if deadlocks_list:
+        print(f"\n--- Detailed Deadlocks Found ({len(deadlocks_list)}) ---")
+        for idx, d_mark in enumerate(deadlocks_list):
+            active_p = [net.places[i].name for i, x in enumerate(d_mark) if x == 1]
+            print(f"Deadlock #{idx+1}: {d_mark}")
+            print(f" > Active Places: {', '.join(active_p)}")
+            print("-" * 40)
+    print("-" * 80)
+
+    print("\n" + "="*80)
+    print(f"{'TASK 5: OPTIMIZATION COMPARISON':^80}")
+    print("="*80)
+    print(f"Objective: Maximize total tokens (Priority: Done=100)")
     print("-" * 80)
     print(f"{'Metric':<35} | {'Before Optimization':<20} | {'After Optimization':<20}")
     print(f"{'':<35} | {'(Explicit Scan)':<20} | {'(BDD + ILP)':<20}")
     print("-" * 80)
     print(f"{'Search Time (s)':<35} | {time_opt_before:<20.5f} | {time_opt_after:<20.5f}")
-    print(f"{'Optimal Value':<35} | {opt_val_bfs:<20} | {opt_val_bdd:<20}")
+    print(f"{'Optimal Value':<35} | {str(opt_val_bfs):<20} | {str(opt_val_bdd):<20}")
     print("-" * 80)
     
     if opt_marking_bdd:
@@ -490,10 +621,13 @@ def main():
         print(f" > Optimal Marking Vector: {opt_marking_bdd}")
         active_places = [net.places[i].name for i, x in enumerate(opt_marking_bdd) if x == 1]
         print(f" > Active Places: {', '.join(active_places)}")
-    else:
-        print("No feasible marking found.")
-        
+    
     print("="*80 + "\n")
+    
+    # --- FINAL CLEANUP ---
+    sys.stdout.flush() 
+    logger.log.close()
+    sys.stdout = original_stdout
 
 if __name__ == "__main__":
     main()

@@ -1,59 +1,49 @@
-======================================================================
-PETRI NET ANALYSIS REPORT
-======================================================================
-PNML file : fork_join_deadlock.pnml
 
-Task 1 – Net summary
-----------------------------------------------------------------------
-  Number of places      : 6
-  Number of transitions : 4
-  Initial marking M0    : (1, 0, 0, 0, 0, 0)
+================================================================================
+                            TASK 1: NETWORK SUMMARY                             
+================================================================================
+File         : .\test2.pnml
+Places       : 6
+Transitions  : 4
+Initial State: (1, 0, 0, 0, 0, 0)
 
-  Places (index : id / name)
-     0: p0 / P0_Start
-     1: p1 / P1_Left
-     2: p2 / P2_Right
-     3: p3 / P3_LeftDone
-     4: p4 / P4_RightDone
-     5: p5 / P5_Completed
+================================================================================
+                     TASK 2 vs 3: REACHABILITY CONSTRUCTION                     
+================================================================================
+Metric                              | BFS (Explicit)       | BDD (Symbolic)      
+--------------------------------------------------------------------------------
+Construction Time (s)               | 0.00003              | 0.00069             
+State Count                         | 6                    | 6                   
+--------------------------------------------------------------------------------
 
-Task 2 – Explicit reachability (BFS)
-----------------------------------------------------------------------
-  |R| (reachable markings) : 6
-  BFS exploration time      : 0.000072 seconds
+================================================================================
+                     TASK 4: DEADLOCK DETECTION (ILP + BDD)                     
+================================================================================
+Condition: Reachable state where NO transition is enabled.
+--------------------------------------------------------------------------------
+Execution Time  : 0.03009 sec
+Status          : Found 1 Deadlocks
 
-  Sample reachable markings (up to 10):
-    M0: (1, 0, 0, 0, 0, 0)  |  tokens at: P0_Start
-    M1: (0, 1, 1, 0, 0, 0)  |  tokens at: P1_Left, P2_Right
-    M2: (0, 0, 1, 1, 0, 0)  |  tokens at: P2_Right, P3_LeftDone
-    M3: (0, 1, 0, 0, 1, 0)  |  tokens at: P1_Left, P4_RightDone
-    M4: (0, 0, 0, 1, 1, 0)  |  tokens at: P3_LeftDone, P4_RightDone
-    M5: (0, 0, 0, 0, 0, 1)  |  tokens at: P5_Completed
+--- Detailed Deadlocks Found (1) ---
+Deadlock #1: [0, 0, 0, 0, 0, 1]
+ > Active Places: p5
+----------------------------------------
+--------------------------------------------------------------------------------
 
-Task 3 – BDD-based symbolic reachability
-----------------------------------------------------------------------
-  |R| (reachable markings) : 6
-  BDD fixpoint time        : 0.003250 seconds
+================================================================================
+                        TASK 5: OPTIMIZATION COMPARISON                         
+================================================================================
+Objective: Maximize total tokens (Priority: Done=100)
+--------------------------------------------------------------------------------
+Metric                              | Before Optimization  | After Optimization  
+                                    | (Explicit Scan)      | (BDD + ILP)         
+--------------------------------------------------------------------------------
+Search Time (s)                     | 0.00001              | 0.01553             
+Optimal Value                       | 2                    | 2                   
+--------------------------------------------------------------------------------
 
-  Sanity check:
-    - Initial marking M0 is in reachable set: True
+Final Result (from BDD+ILP):
+ > Optimal Marking Vector: [0, 1, 1, 0, 0, 0]
+ > Active Places: p1, p2
+================================================================================
 
-Task 4 – Deadlock detection (ILP + BDD)
-----------------------------------------------------------------------
-  Result : Reachable deadlock marking found
-           (no transition is enabled at this marking).
-
-  m_deadlock =
-    (0, 0, 0, 0, 0, 1)  |  tokens at: P5_Completed
-
-Task 5 – Optimization over reachable markings (ILP + BDD)
-----------------------------------------------------------------------
-  Weights not provided on command line.
-  Using default weights: c_p = 1 for every place p.
-  Optimization sense        : max
-
-  Result : Optimal reachable marking found.
-           Objective value = 2.0
-
-  m_opt =
-    (0, 0, 1, 1, 0, 0)  |  tokens at: P2_Right, P3_LeftDone
