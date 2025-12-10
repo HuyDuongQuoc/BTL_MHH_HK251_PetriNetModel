@@ -1,41 +1,31 @@
-# CO2011 – Mathematical Modeling Assignment  
+# CO2011 – Mathematical Modeling Assignment
 
-This project implements all tasks of the assignment:
+This project implements the tasks for the Petri Net analysis assignment, featuring a **custom-built BDD engine** to optimize state-space exploration.
 
-1. PNML parsing for 1-safe Place/Transition nets  
-2. Explicit (BFS) reachability  
-3. BDD-based symbolic reachability  
-4. ILP + BDD deadlock detection  
-5. Optimization over reachable markings using ILP + BDD filtering  
+### **Features Implemented**
+1. **PNML Parsing**: Reads 1-safe Place/Transition nets from `.pnml` files.
+2. **Explicit Reachability**: Standard Breadth-First Search (BFS) for state enumeration.
+3. **Symbolic Reachability**: **Custom BDD implementation** (no external BDD library) for optimized state management.
+4. **Optimization**: Finds the reachable marking that maximizes tokens using a hybrid **ILP + BDD** approach (State Equation + Symbolic Verification).
+5. **Performance Reporting**: Automatically compares "Before Optimization" (BFS) vs "After Optimization" (BDD+ILP) metrics.
 
 ---
 
 ## 1. Requirements
 
-- **Language**: Python 3.8+ (tested with Python 3.x)
-- **External libraries**:
-  - [`dd`](https://pypi.org/project/dd/) – Binary Decision Diagrams (BDD)
-  - [`pulp`](https://pypi.org/project/PuLP/) – Integer Linear Programming
+- **Language**: Python 3.8+
+- **External Libraries**:
+  - [`pulp`](https://pypi.org/project/PuLP/) – Used for the Integer Linear Programming (ILP) solver in Task 5.
+  - *(Note: The BDD engine is implemented from scratch, so `dd` or `cudd` are NOT required.)*
 
-Install dependencies (recommended):
+### **Installation**
+
+Install the required ILP solver library:
 
 ```bash
-pip install dd pulp
+pip install pulp
 # or
-python -m pip install dd pulp
-```
+python -m pip install pulp
 
-## 2. How to Choose weights vector
-
-- If you do not specify --weights, the program uses weight equal 1 for all places by default.
-- For running with a custom weight vector, remember to maximize reaching the global success marking (i.e.,place Done) and optionally reward having puzzles solved. 
-- Suggest wieght vector for escape_room_2players.pnml: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1
-- Note that this suggested weight vector is chosen because the Petri net is fairly complex, which can otherwise cause the execution to freeze if we use a random or default weight vector.
-
-
-## 3. How to run
-
-From the folder containing `main.py` and your PNML model, run the command with format as below:
-
+#command promt
 python main.py <test.pnml>
-
